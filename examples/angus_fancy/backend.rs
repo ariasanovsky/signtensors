@@ -1,206 +1,12 @@
 use core::f32;
 
-use clap::Parser;
 use cuts::{inplace_sct::CutHelper, SignMatMut};
-use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
+use dyn_stack::PodStack;
 use equator::assert;
-use faer::{linalg::temp_mat_req, solvers::SolverCore, Col, ColMut, ColRef, Mat, MatMut, MatRef};
-use image::{open, ImageBuffer, Rgb};
-use itertools::Itertools;
-use rand::{rngs::StdRng, SeedableRng};
+use faer::{solvers::SolverCore, Col, ColMut, ColRef, Mat, MatMut, MatRef};
 use reborrow::{Reborrow, ReborrowMut};
 
-#[derive(Debug, Parser)]
-#[command(name = "Angus")]
-#[command(about = "Approximates an image with signed cuts", long_about = None)]
-struct Args {
-    /// Input directory containing `safetensors`
-    #[arg(short = 'i')]
-    input: std::path::PathBuf,
-    /// Output directory for new `safetensors`
-    #[arg(short = 'o')]
-    output: std::path::PathBuf,
-    /// The width
-    #[arg(short = 'w')]
-    width: usize,
-    /// Render an image at step `{1, 1+s, 1+2s, ...}`
-    #[arg(short = 's')]
-    step: usize,
-    // /// The number of tensors to process in parallel
-    // #[arg(short = 't')]
-    // threads: Option<usize>,
-}
-
-fn main() -> eyre::Result<()> {
-    let Args {
-        input,
-        output,
-        width,
-        step,
-        // threads: _,
-    } = Args::try_parse()?;
-    let stem = input
-        .file_stem()
-        .unwrap()
-        .to_os_string()
-        .into_string()
-        .unwrap();
-    let img = open(input)?.into_rgb8();
-    let (nrows, ncols) = img.dimensions();
-    let (nrows, ncols): (usize, usize) = (nrows as _, ncols as _);
-    let width_bits = 32 + 3 + nrows + ncols;
-    let nbytes = (width * width_bits).div_ceil(8);
-    dbg!(width, nbytes);
-    let bytes = (0..3)
-        .flat_map(|c| img.pixels().map(move |p| p.0[c]))
-        .collect::<Vec<_>>();
-    let bytes = RgbTensor::new(bytes, nrows, ncols);
-    // let init_norm = bytes
-    //     .data
-    //     .iter()
-    //     .map(|&b| {
-    //         let b = b as i64;
-    //         b * b
-    //     })
-    //     .sum::<i64>();
-    let init_norm = 3 * nrows * ncols * 255 * 255;
-    let a = bytes.clone().convert(|c| c as f32);
-
-    let rng = &mut StdRng::seed_from_u64(0);
-    let mut smat: SignMatrix = SignMatrix::new(nrows);
-    let mut tmat: SignMatrix = SignMatrix::new(ncols);
-    let blowup = false;
-
-    let mut rgb: RgbVector = if blowup {
-        RgbVector::blowup_with_capacity(width)
-        // RgbVector::Blowup {
-        //     kmat: SignMatrix::new(3),
-        //     c: vec![0.0f32; 0],
-        // }
-    } else {
-        // todo!()
-        RgbVector::columns_with_capacity(width)
-    };
-    let mut r = a.clone();
-    let mut mem = GlobalPodBuffer::new(
-        StackReq::new::<u64>(Ord::max(nrows, ncols)).and(temp_mat_req::<f32>(1, 1).unwrap()),
-    );
-    let mut stack = PodStack::new(&mut mem);
-
-    for w in 0..width {
-        let r_gammas: [Mat<f32>; 4] = GAMMA.map(|k| r.combine_colors(&k));
-        let cuts: [(Col<f32>, Col<f32>); 4] =
-            core::array::from_fn(|i| greedy_cut(r_gammas[i].as_ref(), rng, stack.rb_mut()));
-        let mut mats: [(SignMatrix, SignMatrix, RgbVector); 4] = core::array::from_fn(|i| {
-            let mut smat = smat.clone();
-            smat.push_col(cuts[i].0.as_slice());
-            let mut tmat = tmat.clone();
-            tmat.push_col(cuts[i].1.as_slice());
-            match &rgb {
-                RgbVector::Blowup { width, kmat, c } => {
-                    let mut kmat = kmat.clone();
-                    kmat.push_col(&GAMMA[i]);
-                    let rgb = RgbVector::Blowup {
-                        width: w + 1,
-                        kmat,
-                        c: Col::zeros(w + 1),
-                    };
-                    (smat, tmat, rgb)
-                }
-                RgbVector::Columns { width: _, r, g, b } => {
-                    let rgb = RgbVector::Columns {
-                        width: w + 1,
-                        r: Col::zeros(w + 1),
-                        g: Col::zeros(w + 1),
-                        b: Col::zeros(w + 1),
-                    };
-                    (smat, tmat, rgb)
-                }
-            }
-        });
-        let regressions: [f32; 4] = core::array::from_fn(|i| {
-            let (smat, tmat, rgb) = &mut mats[i];
-            let anorm = regress(&a, smat, tmat, rgb.as_mut());
-            anorm
-        });
-        let i_max = regressions
-            .iter()
-            .position_max_by(|a, b| a.partial_cmp(&b).unwrap())
-            .unwrap();
-        smat.push_col(cuts[i_max].0.as_slice());
-        tmat.push_col(cuts[i_max].1.as_slice());
-        match &mut rgb {
-            RgbVector::Blowup { width, kmat, c } => {
-                // let (new_smat, new_tmat, new_rgb) = &mats[i_max];
-                kmat.push_col(GAMMA[i_max].as_slice());
-                match mats[i_max].2.as_mut() {
-                    RgbVectorMut::Blowup {
-                        width: _,
-                        kmat: _,
-                        c: c_new,
-                    } => {
-                        *c = c_new.to_owned();
-                        *width += 1;
-                    }
-                    _ => unreachable!(),
-                };
-            }
-            RgbVector::Columns { width, r, g, b } => match mats[i_max].2.as_mut() {
-                RgbVectorMut::Columns {
-                    width: _,
-                    r: r_new,
-                    g: g_new,
-                    b: b_new,
-                } => {
-                    *width += 1;
-                    r.copy_from(r_new);
-                    g.copy_from(g_new);
-                    b.copy_from(b_new);
-                }
-                _ => unreachable!(),
-            },
-        }
-        r = a.minus(&smat, &tmat, rgb.as_ref());
-        // let improvements = (0, 0);
-        let improvements = improve_signs_then_coefficients_repeatedly(
-            &a,
-            &mut r,
-            &mut smat,
-            &mut tmat,
-            rgb.as_mut(),
-            stack.rb_mut(),
-            1,
-        );
-        let approx = a.col() - r.col();
-        let rel_error =
-            ((total_error(approx.as_slice(), &bytes.data) as f64) / (init_norm as f64)).sqrt();
-        let w = w + 1;
-        let nbits = if blowup {
-            w * (nrows + ncols + 3 + 32)
-        } else {
-            w * (nrows + ncols + 3 * 32)
-        };
-        println!(
-            "({}, {}, {}, {}, {}),",
-            w, nbits, improvements.0, improvements.1, rel_error
-        );
-        if true || w % step == 1 || w == width {
-            let outpath = output.join(format!("{stem}-{w:04}.jpg"));
-            let approx = a.col() - r.col();
-            let output = ImageBuffer::from_fn(nrows as _, ncols as _, |i, j| {
-                let i = i as usize;
-                let j = j as usize;
-                let ij = i + nrows * j;
-                let rgb: [u8; 3] = core::array::from_fn(|c| to_u8(approx[c * nrows * ncols + ij]));
-                Rgb(rgb)
-            });
-            output.save(outpath)?;
-        }
-    }
-    Ok(())
-}
-
-enum RgbVector {
+pub(crate) enum RgbVector {
     Blowup {
         width: usize,
         kmat: SignMatrix,
@@ -215,7 +21,7 @@ enum RgbVector {
 }
 
 impl RgbVector {
-    fn blowup_with_capacity(capacity: usize) -> Self {
+    pub(crate) fn blowup_with_capacity(capacity: usize) -> Self {
         Self::Blowup {
             width: 0,
             kmat: SignMatrix::new(3),
@@ -223,7 +29,7 @@ impl RgbVector {
         }
     }
 
-    fn columns_with_capacity(capacity: usize) -> Self {
+    pub(crate) fn columns_with_capacity(capacity: usize) -> Self {
         Self::Columns {
             width: 0,
             r: Col::zeros(capacity),
@@ -232,7 +38,7 @@ impl RgbVector {
         }
     }
 
-    fn as_ref(&self) -> RgbVectorRef {
+    pub(crate) fn as_ref(&self) -> RgbVectorRef {
         match self {
             RgbVector::Blowup { width, kmat, c } => RgbVectorRef::Blowup {
                 width: *width,
@@ -248,7 +54,7 @@ impl RgbVector {
         }
     }
 
-    fn as_mut(&mut self) -> RgbVectorMut {
+    pub(crate) fn as_mut(&mut self) -> RgbVectorMut {
         match self {
             RgbVector::Blowup { width, kmat, c } => RgbVectorMut::Blowup {
                 width: *width,
@@ -264,7 +70,7 @@ impl RgbVector {
         }
     }
 
-    fn width(&self) -> usize {
+    pub(crate) fn width(&self) -> usize {
         match self {
             RgbVector::Blowup {
                 width,
@@ -281,7 +87,7 @@ impl RgbVector {
     }
 }
 
-enum RgbVectorRef<'a> {
+pub(crate) enum RgbVectorRef<'a> {
     Blowup {
         width: usize,
         kmat: &'a SignMatrix,
@@ -295,7 +101,7 @@ enum RgbVectorRef<'a> {
     },
 }
 
-enum RgbVectorMut<'a> {
+pub(crate) enum RgbVectorMut<'a> {
     Blowup {
         width: usize,
         kmat: &'a mut SignMatrix,
@@ -310,7 +116,7 @@ enum RgbVectorMut<'a> {
 }
 
 impl RgbVectorMut<'_> {
-    fn width(&self) -> usize {
+    pub(crate) fn width(&self) -> usize {
         match self {
             RgbVectorMut::Blowup {
                 width,
@@ -327,7 +133,7 @@ impl RgbVectorMut<'_> {
     }
 }
 
-fn total_error(a: &[f32], bytes: &[u8]) -> i64 {
+pub(crate) fn total_error(a: &[f32], bytes: &[u8]) -> i64 {
     assert!(a.len() == bytes.len());
     let mut err: i64 = 0;
     for (a, b) in a.iter().zip(bytes.iter()) {
@@ -359,13 +165,17 @@ fn u8_errors<'a>(bytes: &'a [u8], mat: MatRef<'a, f32>) -> impl Iterator<Item = 
     })
 }
 
-fn to_u8(x: f32) -> u8 {
+pub(crate) fn to_u8(x: f32) -> u8 {
     assert!(x.is_finite());
     let x = x.clamp(0.0, 255.0);
     x.round() as _
 }
 
-fn greedy_cut(mat: MatRef<f32>, rng: &mut impl rand::Rng, stack: PodStack) -> (Col<f32>, Col<f32>) {
+pub(crate) fn greedy_cut(
+    mat: MatRef<f32>,
+    rng: &mut impl rand::Rng,
+    stack: PodStack,
+) -> (Col<f32>, Col<f32>) {
     let (nrows, ncols) = mat.shape();
     let mut s = Col::from_fn(nrows, |_| if rng.gen() { -1.0f32 } else { 1.0 });
     let mut t = Col::from_fn(ncols, |_| if rng.gen() { -1.0f32 } else { 1.0 });
@@ -520,7 +330,7 @@ impl<'short> Reborrow<'short> for RgbVectorMut<'_> {
     }
 }
 
-fn regress<'a>(
+pub(crate) fn regress<'a>(
     a: &RgbTensor<f32>,
     smat: &SignMatrix,
     tmat: &SignMatrix,
@@ -596,7 +406,7 @@ fn regress<'a>(
     }
 }
 
-fn improve_signs_then_coefficients_repeatedly(
+pub(crate) fn improve_signs_then_coefficients_repeatedly(
     a: &RgbTensor<f32>,
     r: &mut RgbTensor<f32>,
     smat: &mut SignMatrix,
@@ -629,8 +439,8 @@ fn improve_signs_then_coefficients_repeatedly(
                     let k_j = kmat.as_mat_ref().col(j);
                     let k = &[k_j[0], k_j[1], k_j[2]];
                     let r_j = r_j.combine_colors(k);
-                    let mut s_j = smat.as_mat_mut().col_mut(j);
-                    let mut t_j = tmat.as_mat_mut().col_mut(j);
+                    let s_j = smat.as_mat_mut().col_mut(j);
+                    let t_j = tmat.as_mat_mut().col_mut(j);
                     let two_remainder = faer::scale(2.0f32) * r_j.as_ref();
                     let two_remainder_transposed = two_remainder.transpose().to_owned();
                     let (bit_rows, bit_cols) = (nrows.div_ceil(64), ncols.div_ceil(64));
@@ -748,8 +558,8 @@ fn improve_signs_then_coefficients_repeatedly(
                     };
                     let r_j = a.minus(smat, tmat, rgb_j);
                     let r_j = r_j.combine_colors(k);
-                    let mut s_j = smat.as_mat_mut().col_mut(j);
-                    let mut t_j = tmat.as_mat_mut().col_mut(j);
+                    let s_j = smat.as_mat_mut().col_mut(j);
+                    let t_j = tmat.as_mat_mut().col_mut(j);
                     let two_remainder = faer::scale(2.0f32) * r_j.as_ref();
                     let two_remainder_transposed = two_remainder.transpose().to_owned();
                     let (bit_rows, bit_cols) = (nrows.div_ceil(64), ncols.div_ceil(64));
@@ -861,19 +671,19 @@ fn improve_signs_then_coefficients_repeatedly(
 
 // layout: [a0, a1, a2] where each ai is column-major
 #[derive(Clone)]
-struct RgbTensor<T> {
+pub(crate) struct RgbTensor<T> {
     nrows: usize,
     ncols: usize,
-    data: Vec<T>,
+    pub(crate) data: Vec<T>,
 }
 
 impl<T> RgbTensor<T> {
-    fn new(data: Vec<T>, nrows: usize, ncols: usize) -> Self {
+    pub(crate) fn new(data: Vec<T>, nrows: usize, ncols: usize) -> Self {
         assert!(data.len() == nrows * ncols * 3);
         Self { nrows, ncols, data }
     }
 
-    fn convert<U>(self, f: impl Fn(T) -> U) -> RgbTensor<U> {
+    pub(crate) fn convert<U>(self, f: impl Fn(T) -> U) -> RgbTensor<U> {
         let Self { nrows, ncols, data } = self;
         RgbTensor {
             nrows,
@@ -898,17 +708,17 @@ impl RgbTensor<f32> {
         faer::mat::from_column_major_slice(self.color(c), self.nrows, self.ncols)
     }
 
-    fn col(&self) -> ColRef<f32> {
+    pub(crate) fn col(&self) -> ColRef<f32> {
         faer::col::from_slice(&self.data)
     }
 
-    fn combine_colors(&self, &[k0, k1, k2]: &[f32; 3]) -> Mat<f32> {
+    pub(crate) fn combine_colors(&self, &[k0, k1, k2]: &[f32; 3]) -> Mat<f32> {
         faer::scale(k0) * self.mat(0)
             + faer::scale(k1) * self.mat(1)
             + faer::scale(k2) * self.mat(2)
     }
 
-    fn minus(
+    pub(crate) fn minus(
         &self,
         smat: &SignMatrix,
         tmat: &SignMatrix,
@@ -972,14 +782,14 @@ impl RgbTensor<f32> {
 // }
 
 #[derive(Clone)]
-struct SignMatrix {
+pub(crate) struct SignMatrix {
     nrows: usize,
     width: usize,
     data: Vec<f32>,
 }
 
 impl SignMatrix {
-    fn new(nrows: usize) -> Self {
+    pub(crate) fn new(nrows: usize) -> Self {
         Self {
             nrows,
             width: 0,
@@ -995,13 +805,13 @@ impl SignMatrix {
     //     }
     // }
 
-    fn push_col(&mut self, col: &[f32]) {
+    pub(crate) fn push_col(&mut self, col: &[f32]) {
         assert!(col.len() == self.nrows);
         self.data.extend_from_slice(col);
         self.width += 1
     }
 
-    fn as_mat_ref(&self) -> MatRef<f32> {
+    pub(crate) fn as_mat_ref(&self) -> MatRef<f32> {
         faer::mat::from_column_major_slice(self.data.as_slice(), self.nrows, self.width)
     }
 
@@ -1010,7 +820,7 @@ impl SignMatrix {
     }
 }
 
-const GAMMA: [[f32; 3]; 4] = [
+pub(crate) const GAMMA: [[f32; 3]; 4] = [
     [1.0, 1.0, 1.0],
     [1.0, 1.0, -1.0],
     [1.0, -1.0, 1.0],
