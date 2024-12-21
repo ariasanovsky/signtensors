@@ -23,6 +23,7 @@ half = "2.4.1"
 rand = "0.8.5"
 clap = { version = "4.5.7", features = ["derive"] }
 eyre = "0.6.12"
+flate2 = "1.0.34"
 image = "0.25.1"
 
 [[bench]]
