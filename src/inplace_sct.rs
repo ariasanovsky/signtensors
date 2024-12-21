@@ -1,8 +1,7 @@
 use crate::{bitmagic, SignMatMut, SignMatRef};
 use core::iter::zip;
-use dyn_stack::PodStack;
 use equator::assert;
-use faer::{Col, ColMut, ColRef, MatRef};
+use faer::{dyn_stack::PodStack, Col, ColMut, ColRef, MatRef};
 use rand::prelude::*;
 use reborrow::*;
 
@@ -73,7 +72,7 @@ impl CutHelper {
         T: SignMatMut<'_>,
         rng: &mut dyn rand::RngCore,
         max_iterations: usize,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) -> f32 {
         let Self {
             t_signs,
@@ -111,7 +110,7 @@ impl CutHelper {
         C: ColMut<'_, f32>,
         T: SignMatMut<'_>,
         max_iterations: usize,
-        mut stack: PodStack<'_>,
+        mut stack: &mut PodStack,
     ) -> f32 {
         let Self {
             t_signs,
@@ -225,11 +224,15 @@ impl CutHelper {
         *C_next = -2.0 * normalized_cut;
         S_next
             .storage_mut()
-            .col_as_slice_mut(0)
+            .col_mut(0)
+            .try_as_slice_mut()
+            .unwrap()
             .copy_from_slice(s_signs);
         T_next
             .storage_mut()
-            .col_as_slice_mut(0)
+            .col_mut(0)
+            .try_as_slice_mut()
+            .unwrap()
             .copy_from_slice(t_signs);
 
         cut
@@ -336,7 +339,7 @@ fn mul_add_with_rank_update(
     T: SignMatRef<'_>,
     x_new: &[u8],
     x_old: &[u8],
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let width = T.ncols();
     let n = two_mat.ncols();
@@ -347,7 +350,7 @@ fn mul_add_with_rank_update(
     let (y, _) = faer::linalg::temp_mat_uninit::<f32>(width, 1, stack);
     let y = y.col_mut(0).try_as_slice_mut().unwrap();
     for j in 0..width {
-        let col = T.storage_as::<u8>().col_as_slice(j);
+        let col = T.storage_as::<u8>().col(j).try_as_slice().unwrap();
         let mut acc = 0i64;
         for &i in diff_indices {
             let negate = (i >> 63) == 1;
@@ -408,7 +411,7 @@ pub(crate) fn improve_with_rank_update(
     t_signs: &mut [u8],
     mut t_image: ColMut<'_, f32>,
     cut: &mut f32,
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) -> bool {
     let new_cut = s_image.norm_l1();
     if new_cut <= *cut {
@@ -431,16 +434,7 @@ pub(crate) fn improve_with_rank_update(
 
     let t_image = t_image.rb_mut().try_as_slice_mut().unwrap();
 
-    mul_add_with_rank_update(
-        t_image,
-        two_mat,
-        S,
-        C,
-        T,
-        t_signs,
-        t_signs_old,
-        stack,
-    );
+    mul_add_with_rank_update(t_image, two_mat, S, C, T, t_signs, t_signs_old, stack);
 
     true
 }
@@ -448,8 +442,11 @@ pub(crate) fn improve_with_rank_update(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dyn_stack::{GlobalPodBuffer, StackReq};
-    use faer::{linalg::temp_mat_req, Mat};
+    use faer::{
+        dyn_stack::{GlobalPodBuffer, StackReq},
+        linalg::temp_mat_req,
+        Mat,
+    };
 
     #[test]
     fn test_cuts_regular() {
@@ -476,21 +473,11 @@ mod tests {
         .squared_norm_l2();
 
         let mut S = SignMatMut::from_storage(
-            crate::MatMut::from_col_major_slice(
-                &mut S,
-                nrows.div_ceil(64),
-                blocksize,
-                nrows.div_ceil(64),
-            ),
+            faer::mat::from_column_major_slice_mut(&mut S, nrows.div_ceil(64), blocksize),
             nrows,
         );
         let mut T = SignMatMut::from_storage(
-            crate::MatMut::from_col_major_slice(
-                &mut T,
-                ncols.div_ceil(64),
-                blocksize,
-                ncols.div_ceil(64),
-            ),
+            faer::mat::from_column_major_slice_mut(&mut T, ncols.div_ceil(64), blocksize),
             ncols,
         );
         let mut how_full = 0usize;
@@ -510,7 +497,7 @@ mod tests {
         while iter < 20000 {
             if how_full == blocksize {
                 {
-                    let two_remainder = crate::MatMut::from_faer(two_remainder.as_mut());
+                    let two_remainder = two_remainder.as_mut();
                     crate::bitmagic::matmul::mat_tmat_f32(
                         two_remainder,
                         S.rb(),
@@ -525,8 +512,8 @@ mod tests {
                 remainder_norm = two_remainder.squared_norm_l2() / 4.0;
 
                 for k in 0..blocksize {
-                    full_S.extend_from_slice(S.rb().storage().col_as_slice(k));
-                    full_T.extend_from_slice(T.rb().storage().col_as_slice(k));
+                    full_S.extend_from_slice(S.rb().storage().col(k).try_as_slice().unwrap());
+                    full_T.extend_from_slice(T.rb().storage().col(k).try_as_slice().unwrap());
                     full_C.push(-C[k] / 2.0);
                 }
                 how_full = 0;
@@ -547,7 +534,7 @@ mod tests {
             remainder_norm -= (cut * cut) / (nrows * ncols) as f32;
             if remainder_norm <= bf16_residual {
                 {
-                    let two_remainder = crate::MatMut::from_faer(two_remainder.as_mut());
+                    let two_remainder = two_remainder.as_mut();
                     crate::bitmagic::matmul::mat_tmat_f32(
                         two_remainder,
                         S.rb_mut().split_at_col_mut(how_full).0.rb(),
@@ -560,8 +547,8 @@ mod tests {
                     .copy_from(two_remainder.transpose());
 
                 for k in 0..how_full {
-                    full_S.extend_from_slice(S.rb().storage().col_as_slice(k));
-                    full_T.extend_from_slice(T.rb().storage().col_as_slice(k));
+                    full_S.extend_from_slice(S.rb().storage().col(k).try_as_slice().unwrap());
+                    full_T.extend_from_slice(T.rb().storage().col(k).try_as_slice().unwrap());
                     full_C.push(-C[k] / 2.0);
                 }
 

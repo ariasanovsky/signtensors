@@ -1,7 +1,7 @@
 use aligned_vec::{avec, ABox};
 use core::{cell::Cell, iter};
-use dyn_stack::PodStack;
 use equator::assert;
+use faer::dyn_stack::PodStack;
 use rand::Rng;
 use reborrow::*;
 
@@ -45,7 +45,7 @@ fn sparse_update(
 
     x_new: &[u64],
     x_old: &[u64],
-    stack: PodStack<'_>,
+    stack: &mut PodStack,
 ) {
     let n = t.nrows();
     let (diff_indices, _) = stack.make_raw::<usize>(n);
@@ -92,7 +92,7 @@ fn sparse_update(
 
         if diff_indices_neg.len() + diff_indices_pos.len() < n / 8 {
             for (idx, (y, &c)) in iter::zip(&mut *y, c).enumerate() {
-                let t = t.storage().col_as_slice(idx);
+                let t = t.storage().col(idx).try_as_slice().unwrap();
 
                 let dot = {
                     let mut pos = 0u64;
@@ -114,7 +114,7 @@ fn sparse_update(
             }
         } else {
             for (idx, (y, &c)) in iter::zip(&mut *y, c).enumerate() {
-                let t = t.storage().col_as_slice(idx);
+                let t = t.storage().col(idx).try_as_slice().unwrap();
 
                 let dot = {
                     let mut old_acc = 0u64;
@@ -329,7 +329,7 @@ impl Remainder {
         }
     }
 
-    pub fn cut(&self, cut: &mut Cut, rng: &mut impl Rng, stack: PodStack<'_>) {
+    pub fn cut(&self, cut: &mut Cut, rng: &mut impl Rng, stack: &mut PodStack) {
         let mut stack = stack;
         cut.setup(self, rng, stack.rb_mut());
         loop {
@@ -344,7 +344,7 @@ impl Remainder {
         }
     }
 
-    pub fn update(&mut self, cut: &Cut, stack: PodStack<'_>) {
+    pub fn update(&mut self, cut: &Cut, stack: &mut PodStack) {
         let f = -1.0 / self.total_dim as f32;
         let scale = &*cut.c().iter().map(|&c| c * f).collect::<Box<[_]>>();
         cut.flush(&mut self.t, scale, stack);
@@ -546,7 +546,7 @@ impl Cut {
     }
 
     #[inline(never)]
-    fn update_image(&mut self, axis: usize, remainder: &Remainder, stack: PodStack<'_>) {
+    fn update_image(&mut self, axis: usize, remainder: &Remainder, stack: &mut PodStack) {
         let how_full = self.how_full;
         let blocksize = self.blocksize;
 
@@ -574,19 +574,15 @@ impl Cut {
             let dim = self.dim[axis];
             let len = dim.div_ceil(64);
             let s = &s[..len * how_full];
-            let s = SignMatRef::from_storage(
-                crate::MatRef::from_col_major_slice(s, len, how_full, len),
-                dim,
-            );
+            let s =
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(s, len, how_full), dim);
 
             let t = &*self.x_signs[axis];
             let dim = n;
             let len = dim.div_ceil(64);
             let t = &t[..len * how_full];
-            let t = SignMatRef::from_storage(
-                crate::MatRef::from_col_major_slice(t, len, how_full, len),
-                dim,
-            );
+            let t =
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(t, len, how_full), dim);
 
             sparse_update(
                 matvec,
@@ -608,7 +604,7 @@ impl Cut {
     }
 
     #[inline(never)]
-    pub fn setup(&mut self, remainder: &Remainder, rng: &mut impl Rng, stack: PodStack<'_>) {
+    pub fn setup(&mut self, remainder: &Remainder, rng: &mut impl Rng, stack: &mut PodStack) {
         let how_full = self.how_full;
         let blocksize = self.blocksize;
         assert!(how_full < blocksize);
@@ -659,7 +655,7 @@ impl Cut {
                 let len = dim.div_ceil(64);
                 let s = &s[..len * how_full];
                 let s = SignMatRef::from_storage(
-                    crate::MatRef::from_col_major_slice(s, len, how_full, len),
+                    faer::mat::from_column_major_slice(s, len, how_full),
                     dim,
                 );
 
@@ -668,7 +664,7 @@ impl Cut {
                 let len = dim.div_ceil(64);
                 let t = &t[..len * how_full];
                 let t = SignMatRef::from_storage(
-                    crate::MatRef::from_col_major_slice(t, len, how_full, len),
+                    faer::mat::from_column_major_slice(t, len, how_full),
                     dim,
                 );
 
@@ -708,7 +704,7 @@ impl Cut {
     }
 
     #[inline(never)]
-    pub fn improve(&mut self, axis: usize, remainder: &Remainder, stack: PodStack<'_>) -> bool {
+    pub fn improve(&mut self, axis: usize, remainder: &Remainder, stack: &mut PodStack) -> bool {
         let mut stack = stack;
         self.update_image(axis, remainder, stack.rb_mut());
 
@@ -740,7 +736,7 @@ impl Cut {
         axis: usize,
         dim: &[usize],
         s: impl Clone + DoubleEndedIterator<Item = &'a [u64]> + ExactSizeIterator,
-        stack: PodStack<'_>,
+        stack: &mut PodStack,
     ) {
         let total_dim = dim.iter().product::<usize>();
         let full_len = total_dim / dim[axis];
@@ -762,7 +758,7 @@ impl Cut {
         }
     }
 
-    pub fn flush(&self, dst: &mut [f32], scale: &[f32], stack: PodStack<'_>) {
+    pub fn flush(&self, dst: &mut [f32], scale: &[f32], stack: &mut PodStack) {
         let how_full = self.how_full;
         let blocksize = self.blocksize;
         assert!(how_full <= blocksize);
@@ -799,15 +795,15 @@ impl Cut {
         }
 
         let s = SignMatRef::from_storage(
-            crate::MatRef::from_col_major_slice(s_kron, s_limb_len, rank, s_limb_len),
+            faer::mat::from_column_major_slice(s_kron, s_limb_len, rank),
             s_len,
         );
         let t = SignMatRef::from_storage(
-            crate::MatRef::from_col_major_slice(t_kron, t_limb_len, rank, t_limb_len),
+            faer::mat::from_column_major_slice(t_kron, t_limb_len, rank),
             t_len,
         );
         bitmagic::matmul::mat_tmat_f32(
-            crate::MatMut::from_faer(faer::mat::from_column_major_slice_mut(dst, s_len, t_len)),
+            faer::mat::from_column_major_slice_mut(dst, s_len, t_len),
             s,
             t,
             scale,
@@ -822,8 +818,8 @@ impl Cut {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dyn_stack::{GlobalPodBuffer, StackReq};
     use equator::assert;
+    use faer::dyn_stack::{GlobalPodBuffer, StackReq};
     use half::bf16;
     use rand::prelude::*;
 
