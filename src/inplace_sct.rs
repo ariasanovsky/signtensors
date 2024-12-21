@@ -89,7 +89,7 @@ impl CutHelper {
             C.nrows() > 0,
         ));
 
-        t_signs_old.copy_from_slice(&t_signs);
+        t_signs_old.copy_from_slice(t_signs);
         t_signs.iter_mut().for_each(|t_sign| *t_sign = rng.gen());
 
         self.cut_mat_inplace(
@@ -153,7 +153,7 @@ impl CutHelper {
             stack.rb_mut(),
         );
         {
-            let s_signs = bytemuck::cast_slice::<u64, u8>(&**s_signs);
+            let s_signs = bytemuck::cast_slice::<u64, u8>(s_signs);
             for (i, &t) in t_image.as_slice().iter().enumerate() {
                 let div = i / 8;
                 let rem = i % 8;
@@ -226,11 +226,11 @@ impl CutHelper {
         S_next
             .storage_mut()
             .col_as_slice_mut(0)
-            .copy_from_slice(&s_signs);
+            .copy_from_slice(s_signs);
         T_next
             .storage_mut()
             .col_as_slice_mut(0)
-            .copy_from_slice(&t_signs);
+            .copy_from_slice(t_signs);
 
         cut
     }
@@ -302,7 +302,7 @@ pub(crate) fn sparse_matvec_sign(
                 negate,
             } = self;
             for &j in diff_indices {
-                let j = (j & ((1 << 63) - 1)) as usize;
+                let j = j & ((1 << 63) - 1);
                 let col = two_mat.col(j).try_as_slice().unwrap();
 
                 if negate {
@@ -417,7 +417,7 @@ pub(crate) fn improve_with_rank_update(
         *cut = new_cut
     }
 
-    t_signs_old.copy_from_slice(&t_signs.rb());
+    t_signs_old.copy_from_slice(t_signs.rb());
     let s_image = s_image.try_as_slice().unwrap();
     for (i, t) in t_signs.iter_mut().enumerate() {
         let mut sign = 0u8;
@@ -432,7 +432,7 @@ pub(crate) fn improve_with_rank_update(
     let t_image = t_image.rb_mut().try_as_slice_mut().unwrap();
 
     mul_add_with_rank_update(
-        t_image.as_mut(),
+        t_image,
         two_mat,
         S,
         C,

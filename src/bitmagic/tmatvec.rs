@@ -107,7 +107,7 @@ pub mod x86 {
                     if m % 16 != 0 {
                         let lhs = &lhs[m / 16];
 
-                        let rhs = simd.f32s_partial_load(&rhs_tail[..]);
+                        let rhs = simd.f32s_partial_load(rhs_tail);
                         acc0 = simd.mul_add_f32x16(
                             simd.select_f32x16(b16(*lhs), neg_one, pos_one),
                             rhs,
@@ -188,7 +188,7 @@ pub mod x86 {
 
                         let lhs_head = bytemuck::cast_slice::<_, u32>(lhs_head4);
 
-                        for (lhs, [rhs0, rhs1, rhs2, rhs3]) in zip(lhs_head, &*rhs_head4) {
+                        for (lhs, [rhs0, rhs1, rhs2, rhs3]) in zip(lhs_head, rhs_head4) {
                             let lhs = simd
                                 .shl_dyn_u32x8(simd.and_u32x8(simd.splat_u32x8(*lhs), MASK), SHIFT);
                             {

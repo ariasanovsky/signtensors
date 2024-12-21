@@ -136,7 +136,7 @@ fn main() -> eyre::Result<()> {
         });
         let i_max = regressions
             .iter()
-            .position_max_by(|a, b| a.partial_cmp(&b).unwrap())
+            .position_max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         smat.push_col(cuts[i_max].0.as_slice());
         tmat.push_col(cuts[i_max].1.as_slice());

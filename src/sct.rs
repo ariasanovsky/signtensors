@@ -109,7 +109,7 @@ impl Sct {
     pub fn views(&self) -> impl IntoIterator<Item = (String, impl View + '_)> {
         let Self { s, c, t, .. } = self;
         struct DynView<'a>(Box<dyn View + 'a>);
-        impl<'a> View for DynView<'a> {
+        impl View for DynView<'_> {
             fn dtype(&self) -> safetensors::Dtype {
                 self.0.dtype()
             }
@@ -143,7 +143,7 @@ impl Sct {
             }
         }
 
-        impl<'a, T: DType + bytemuck::Pod> View for Slice<'a, T> {
+        impl<T: DType + bytemuck::Pod> View for Slice<'_, T> {
             fn dtype(&self) -> safetensors::Dtype {
                 T::dtype()
             }
@@ -171,8 +171,8 @@ impl Sct {
             }
         }
         [
-            ("s".to_owned(), DynView::new(Slice::new(&s))),
-            ("t".to_owned(), DynView::new(Slice::new(&t))),
+            ("s".to_owned(), DynView::new(Slice::new(s))),
+            ("t".to_owned(), DynView::new(Slice::new(t))),
             ("c".to_owned(), DynView::new(Slice::new(c.as_slice()))),
         ]
     }

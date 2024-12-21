@@ -459,7 +459,7 @@ fn matvec_i16(
 
             let max = max / 128.0;
             for y in y.iter_mut() {
-                *y = *y * max;
+                *y *= max;
             }
         }
     }
@@ -552,7 +552,7 @@ fn matvec_i8(
 
             let max = max / 128.0;
             for y in y.iter_mut() {
-                *y = *y * max;
+                *y *= max;
             }
         }
     }
@@ -575,7 +575,7 @@ fn sctvec_i16(bencher: Bencher, (m, n, compression): (usize, usize, f64)) {
         / (m.next_multiple_of(64) / 8 + n.next_multiple_of(64) / 8 + 4) as f64)
         as usize;
 
-    let ref mut rng = StdRng::seed_from_u64(0);
+    let rng = &mut StdRng::seed_from_u64(0);
 
     let chunk_size = 256;
     let width = width.next_multiple_of(chunk_size);
@@ -610,7 +610,7 @@ fn sctvec_i16(bencher: Bencher, (m, n, compression): (usize, usize, f64)) {
         }
 
         for (y, &c) in y.iter_mut().zip(c) {
-            *y = *y * c;
+            *y *= c;
         }
 
         {
@@ -638,7 +638,7 @@ fn sctvec_i8(bencher: Bencher, (m, n, compression): (usize, usize, f64)) {
         as usize;
     let width = width.next_multiple_of(64);
 
-    let ref mut rng = StdRng::seed_from_u64(0);
+    let rng = &mut StdRng::seed_from_u64(0);
 
     let chunk_size = 16;
 
@@ -672,7 +672,7 @@ fn sctvec_i8(bencher: Bencher, (m, n, compression): (usize, usize, f64)) {
         }
 
         for (y, &c) in y.iter_mut().zip(c) {
-            *y = *y * c;
+            *y *= c;
         }
 
         {
@@ -748,7 +748,7 @@ fn sctvec_f32(
             signtensors::bitmagic::tmatvec::tmatvec_f32(tmp, t, x);
         }
         for (x, &c) in zip(&mut *tmp, c) {
-            *x = c * *x;
+            *x *= c;
         }
         if transpose_s {
             signtensors::bitmagic::tmatvec::tmatvec_f32(y, s, tmp);
@@ -914,7 +914,7 @@ fn main() -> std::io::Result<()> {
         ],
         [
             //
-            (1 * 1024, 1 * 1024),
+            (1024, 1024),
             (2 * 1024, 2 * 1024),
             (3 * 1024, 3 * 1024),
             (4 * 1024, 4 * 1024),

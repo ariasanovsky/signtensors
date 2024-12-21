@@ -697,7 +697,7 @@ impl Cut {
                 sparse_matvec(matvec, remainder.mats[axis].as_ref(), diff_indices);
 
                 for x in matvec {
-                    *x = *x * 0.5;
+                    *x *= 0.5;
                 }
             }
         }
@@ -847,7 +847,7 @@ mod tests {
             .map(|_| rand_distr::StandardNormal.sample(rng))
             .collect::<Box<[_]>>();
 
-        let mut remainder = Remainder::new(tensor, &dim, &stride);
+        let mut remainder = Remainder::new(tensor, dim, stride);
         let init_norm = faer::col::from_slice(&remainder.t).norm_l2();
 
         let mut cut = Cut::new(dim, blocksize);

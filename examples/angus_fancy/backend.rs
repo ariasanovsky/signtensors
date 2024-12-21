@@ -330,12 +330,12 @@ impl<'short> Reborrow<'short> for RgbVectorMut<'_> {
     }
 }
 
-pub(crate) fn regress<'a>(
+pub(crate) fn regress(
     a: &RgbTensor<f32>,
     smat: &SignMatrix,
     tmat: &SignMatrix,
     // kmat: &SignMatrix,
-    rgb: RgbVectorMut<'a>,
+    rgb: RgbVectorMut<'_>,
 ) -> f32 {
     // dbg!(rgb.width());
     let smat = smat.as_mat_ref();
@@ -532,7 +532,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                         kmat,
                         c: c.rb_mut(),
                     };
-                    let _ = regress(a, &smat, &tmat, rgb.rb_mut());
+                    let _ = regress(a, smat, tmat, rgb.rb_mut());
                     *remainder = a.minus(smat, tmat, rgb.rb());
                     coefficient_updates += 1;
                 } else {
