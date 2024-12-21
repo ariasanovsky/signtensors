@@ -271,13 +271,19 @@ impl Remainder {
 
             let mut s = 1usize;
             for i in 0..order {
-                if i < axis {
-                    stride[i] = s;
-                    xdim[i] = dim[i];
-                } else if i > axis {
-                    stride[i - 1] = s;
-                    xdim[i - 1] = dim[i];
+                use core::cmp::Ordering;
+                match Ord::cmp(&i, &axis) {
+                    Ordering::Equal => {}
+                    Ordering::Less => {
+                        stride[i] = s;
+                        xdim[i] = dim[i];
+                    }
+                    Ordering::Greater => {
+                        stride[i - 1] = s;
+                        xdim[i - 1] = dim[i];
+                    }
                 }
+
                 s *= dim[i];
             }
 
@@ -462,7 +468,7 @@ impl Cut {
         &self.c[..self.how_full]
     }
 
-    pub fn new<'a>(dim: &[usize], blocksize: usize) -> Self {
+    pub fn new(dim: &[usize], blocksize: usize) -> Self {
         let signs = dim
             .iter()
             .map(|&dim| vec![0u64; blocksize * dim.div_ceil(64)].into_boxed_slice())
@@ -511,14 +517,13 @@ impl Cut {
         }
     }
 
-    fn signs_at<'a, I, Item: 'a + ?Sized>(
+    fn signs_at<'a, I, Item: 'a + ?Sized + AsRef<[u64]>>(
         signs: I,
         blocksize: usize,
         block_idx: usize,
     ) -> impl Clone + ExactSizeIterator + DoubleEndedIterator<Item = &'a [u64]>
     where
         I: IntoIterator<Item = &'a Item>,
-        Item: AsRef<[u64]>,
         I::IntoIter: Clone + ExactSizeIterator + DoubleEndedIterator,
     {
         assert!(block_idx < blocksize);
@@ -527,14 +532,13 @@ impl Cut {
             .map(move |signs| partition(signs.as_ref(), blocksize).nth(block_idx).unwrap())
     }
 
-    fn signs_at_mut<'a, I, Item: 'a + ?Sized>(
+    fn signs_at_mut<'a, I, Item: 'a + ?Sized + AsMut<[u64]>>(
         signs: I,
         blocksize: usize,
         block_idx: usize,
     ) -> impl ExactSizeIterator + DoubleEndedIterator<Item = &'a mut [u64]>
     where
         I: IntoIterator<Item = &'a mut Item>,
-        Item: AsMut<[u64]>,
         I::IntoIter: ExactSizeIterator + DoubleEndedIterator,
     {
         assert!(block_idx < blocksize);

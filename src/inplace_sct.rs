@@ -349,8 +349,8 @@ fn mul_add_with_rank_update(
     // y = T^top * (x_new - x_old)
     let (y, _) = faer::linalg::temp_mat_uninit::<f32>(width, 1, stack);
     let y = y.col_mut(0).try_as_slice_mut().unwrap();
-    for j in 0..width {
-        let col = T.storage_as::<u8>().col(j).try_as_slice().unwrap();
+    for (y, t) in core::iter::zip(&mut *y, T.storage_as::<u8>().col_iter()) {
+        let col = t.try_as_slice().unwrap();
         let mut acc = 0i64;
         for &i in diff_indices {
             let negate = (i >> 63) == 1;
@@ -363,7 +363,7 @@ fn mul_add_with_rank_update(
                 acc -= 1;
             }
         }
-        y[j] = acc as f32;
+        *y = acc as f32;
     }
     // y = C * y
     for (y, &c) in zip(&mut *y, C.try_as_slice().unwrap()) {

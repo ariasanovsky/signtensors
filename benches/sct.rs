@@ -138,7 +138,7 @@ fn tmatvec_i16(y: &mut [f32], max: f32, x: &[i16], t: &[u64], n: usize, chunk_si
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc0b1));
                     let acc0b = simd.add_f32x16(acc0b0, acc0b1);
                     let acc0 = simd.add_f32x16(acc0a, acc0b);
-                    acc0_f32 += simd.f32s_reduce_sum(acc0);
+                    acc0_f32 += simd.reduce_sum_f32s(acc0);
 
                     let acc1a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc1a0));
@@ -151,7 +151,7 @@ fn tmatvec_i16(y: &mut [f32], max: f32, x: &[i16], t: &[u64], n: usize, chunk_si
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc1b1));
                     let acc1b = simd.add_f32x16(acc1b0, acc1b1);
                     let acc1 = simd.add_f32x16(acc1a, acc1b);
-                    acc1_f32 += simd.f32s_reduce_sum(acc1);
+                    acc1_f32 += simd.reduce_sum_f32s(acc1);
 
                     let acc2a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc2a0));
@@ -164,7 +164,7 @@ fn tmatvec_i16(y: &mut [f32], max: f32, x: &[i16], t: &[u64], n: usize, chunk_si
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc2b1));
                     let acc2b = simd.add_f32x16(acc2b0, acc2b1);
                     let acc2 = simd.add_f32x16(acc2a, acc2b);
-                    acc2_f32 += simd.f32s_reduce_sum(acc2);
+                    acc2_f32 += simd.reduce_sum_f32s(acc2);
 
                     let acc3a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc3a0));
@@ -177,7 +177,7 @@ fn tmatvec_i16(y: &mut [f32], max: f32, x: &[i16], t: &[u64], n: usize, chunk_si
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc3b1));
                     let acc3b = simd.add_f32x16(acc3b0, acc3b1);
                     let acc3 = simd.add_f32x16(acc3a, acc3b);
-                    acc3_f32 += simd.f32s_reduce_sum(acc3);
+                    acc3_f32 += simd.reduce_sum_f32s(acc3);
                 }
 
                 y[0] = acc0_f32 * scale;
@@ -322,7 +322,7 @@ fn tmatvec_i8(y: &mut [f32], max: f32, x: &[i8], t: &[u64], n: usize, chunk_size
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc0b1));
                     let acc0b = simd.add_f32x16(acc0b0, acc0b1);
                     let acc0 = simd.add_f32x16(acc0a, acc0b);
-                    acc0_f32 += simd.f32s_reduce_sum(acc0);
+                    acc0_f32 += simd.reduce_sum_f32s(acc0);
 
                     let acc1a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc1a0));
@@ -335,7 +335,7 @@ fn tmatvec_i8(y: &mut [f32], max: f32, x: &[i8], t: &[u64], n: usize, chunk_size
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc1b1));
                     let acc1b = simd.add_f32x16(acc1b0, acc1b1);
                     let acc1 = simd.add_f32x16(acc1a, acc1b);
-                    acc1_f32 += simd.f32s_reduce_sum(acc1);
+                    acc1_f32 += simd.reduce_sum_f32s(acc1);
 
                     let acc2a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc2a0));
@@ -348,7 +348,7 @@ fn tmatvec_i8(y: &mut [f32], max: f32, x: &[i8], t: &[u64], n: usize, chunk_size
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc2b1));
                     let acc2b = simd.add_f32x16(acc2b0, acc2b1);
                     let acc2 = simd.add_f32x16(acc2a, acc2b);
-                    acc2_f32 += simd.f32s_reduce_sum(acc2);
+                    acc2_f32 += simd.reduce_sum_f32s(acc2);
 
                     let acc3a0 =
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc3a0));
@@ -361,7 +361,7 @@ fn tmatvec_i8(y: &mut [f32], max: f32, x: &[i8], t: &[u64], n: usize, chunk_size
                         simd.convert_i32x16_to_f32x16(simd.convert_i16x16_to_i32x16(acc3b1));
                     let acc3b = simd.add_f32x16(acc3b0, acc3b1);
                     let acc3 = simd.add_f32x16(acc3a, acc3b);
-                    acc3_f32 += simd.f32s_reduce_sum(acc3);
+                    acc3_f32 += simd.reduce_sum_f32s(acc3);
                 }
 
                 y[0] = acc0_f32 * scale;
@@ -714,23 +714,23 @@ fn sctvec_f32(
 
     let s = if transpose_s {
         SignMatRef::from_storage(
-            signtensors::MatRef::from_col_major_slice(s, width.div_ceil(64), m, width.div_ceil(64)),
+            faer::mat::from_column_major_slice(s, width.div_ceil(64), m),
             width,
         )
     } else {
         SignMatRef::from_storage(
-            signtensors::MatRef::from_col_major_slice(s, m.div_ceil(64), width, m.div_ceil(64)),
+            faer::mat::from_column_major_slice(s, m.div_ceil(64), width),
             m,
         )
     };
     let t = if transpose_t {
         SignMatRef::from_storage(
-            signtensors::MatRef::from_col_major_slice(t, width.div_ceil(64), n, width.div_ceil(64)),
+            faer::mat::from_column_major_slice(t, width.div_ceil(64), n),
             width,
         )
     } else {
         SignMatRef::from_storage(
-            signtensors::MatRef::from_col_major_slice(t, n.div_ceil(64), width, n.div_ceil(64)),
+            faer::mat::from_column_major_slice(t, n.div_ceil(64), width),
             n,
         )
     };

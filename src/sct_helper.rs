@@ -1,3 +1,4 @@
+use core::iter;
 use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
 use faer::{dyn_stack, linalg::temp_mat_req, Mat, MatRef};
 use rand::Rng;
@@ -40,7 +41,7 @@ impl SctHelper {
                 .and(temp_mat_req::<f32>(block_size, 1).unwrap()),
         );
         let remainder_norm = mat.squared_norm_l2();
-        let two_remainder = faer::scale(2.0f32) * &mat;
+        let two_remainder = faer::scale(2.0f32) * mat;
         let two_remainder_transposed = faer::scale(2.0f32) * mat.transpose();
         let cut_helper = CutHelper::new(two_remainder.as_ref(), two_remainder_transposed.as_ref());
         Self {
@@ -122,12 +123,15 @@ impl SctHelper {
         *remainder_norm = two_remainder.squared_norm_l2() / 4.0;
 
         let SctRef { s, c, t } = block.as_ref();
-        for k in 0..*how_full {
+        for (c, (s, t)) in iter::zip(
+            &c[..*how_full],
+            iter::zip(s.rb().storage().col_iter(), t.rb().storage().col_iter()),
+        ) {
             sct.s[nrows.div_ceil(64) * sct.how_full..][..nrows.div_ceil(64)]
-                .copy_from_slice(s.rb().storage().col(k).try_as_slice().unwrap());
+                .copy_from_slice(s.try_as_slice().unwrap());
             sct.t[ncols.div_ceil(64) * sct.how_full..][..ncols.div_ceil(64)]
-                .copy_from_slice(t.rb().storage().col(k).try_as_slice().unwrap());
-            sct.c[sct.how_full] = -c[k] / 2.0;
+                .copy_from_slice(t.try_as_slice().unwrap());
+            sct.c[sct.how_full] = -c / 2.0;
             sct.how_full += 1;
         }
         *how_full = 0;

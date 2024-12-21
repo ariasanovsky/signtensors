@@ -467,11 +467,11 @@ dependencies = [
 
 [[package]]
 name = "equator"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5099e7b6f0b7431c7a1c49f75929e2777693da192784f167066977a2965767af"
+checksum = "4711b213838dfee0117e3be6ac926007d7f433d7bbe33595975d4190cb07e6fc"
 dependencies = [
- "equator-macro 0.4.1",
+ "equator-macro 0.4.2",
 ]
 
 [[package]]
@@ -487,9 +487,9 @@ dependencies = [
 
 [[package]]
 name = "equator-macro"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5322a90066ddae2b705096eb9e10c465c0498ae93bf9bdd6437415327c88e3bb"
+checksum = "44f23cf4b44bfce11a86ace86f8a73ffdec849c9fd00a386a53d278bd9e81fb3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -537,7 +537,7 @@ dependencies = [
  "coe-rs",
  "dbgf",
  "dyn-stack 0.11.0",
- "equator 0.4.1",
+ "equator 0.4.2",
  "faer-entity",
  "gemm",
  "generativity",
@@ -1614,13 +1614,13 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signtensors"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aligned-vec 0.6.1",
  "bytemuck",
  "clap",
  "diol",
- "equator 0.4.1",
+ "equator 0.4.2",
  "eyre",
  "faer",
  "flate2",

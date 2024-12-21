@@ -33,15 +33,12 @@ pub mod x86 {
                 let rhs_head: &[f32x16] = bytemuck::cast_slice(rhs_head);
 
                 let m = lhs.nrows();
-                let n = lhs.ncols();
 
                 let pos_one = simd.splat_f32x16(1.0);
                 let neg_one = simd.splat_f32x16(-1.0);
 
-                for j in 0..n {
-                    let lhs = bytemuck::cast_slice::<_, u16>(
-                        lhs.storage().col(j).try_as_slice().unwrap(),
-                    );
+                for (dst, lhs) in core::iter::zip(dst, lhs.storage().col_iter()) {
+                    let lhs = bytemuck::cast_slice::<_, u16>(lhs.try_as_slice().unwrap());
 
                     let mut acc0 = simd.splat_f32x16(0.0);
                     let mut acc1 = simd.splat_f32x16(0.0);
@@ -121,7 +118,7 @@ pub mod x86 {
                     acc2 = simd.add_f32x16(acc2, acc3);
                     acc0 = simd.add_f32x16(acc0, acc2);
 
-                    dst[j] += simd.reduce_sum_f32s(acc0);
+                    *dst += simd.reduce_sum_f32s(acc0);
                 }
             }
         }
@@ -161,7 +158,6 @@ pub mod x86 {
                 let (rhs_head4, rhs_head1) = pulp::as_arrays::<4, _>(rhs_head);
 
                 let m = lhs.nrows();
-                let n = lhs.ncols();
 
                 const MASK: u32x8 = u32x8(
                     (1 << 0) | (1 << 8) | (1 << 16) | (1 << 24),
@@ -176,9 +172,8 @@ pub mod x86 {
                 const SHIFT: u32x8 = u32x8(7, 6, 5, 4, 3, 2, 1, 0);
                 let sign_bit = simd.splat_u32x8(u32::MAX / 2 + 1);
 
-                for j in 0..n {
-                    let lhs =
-                        bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
+                for (dst, lhs) in core::iter::zip(dst, lhs.storage().col_iter()) {
+                    let lhs = bytemuck::cast_slice::<_, u8>(lhs.try_as_slice().unwrap());
 
                     let mut acc0 = simd.splat_f32x8(0.0);
                     let mut acc1 = simd.splat_f32x8(0.0);
@@ -247,7 +242,7 @@ pub mod x86 {
                     acc2 = simd.add_f32x8(acc2, acc3);
                     acc0 = simd.add_f32x8(acc0, acc2);
 
-                    dst[j] += simd.reduce_sum_f32s(acc0);
+                    *dst += simd.reduce_sum_f32s(acc0);
                 }
             }
         }
@@ -262,23 +257,19 @@ pub mod x86 {
 }
 
 pub fn tmatvec_f32_scalar(dst: &mut [f32], lhs: SignMatRef<'_>, rhs: &[f32]) {
-    let m = lhs.nrows();
-    let n = lhs.ncols();
-
-    for j in 0..n {
-        let lhs = bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
+    for (dst, lhs) in core::iter::zip(dst, lhs.storage().col_iter()) {
+        let lhs = bytemuck::cast_slice::<_, u8>(lhs.try_as_slice().unwrap());
         let mut acc = 0.0;
 
-        for i in 0..m {
+        for (i, &rhs) in rhs.iter().enumerate() {
             let div = i / 8;
             let rem = i % 8;
 
             let lhs = (lhs[div] >> rem) & 1 == 1;
-            let rhs = rhs[i];
 
             acc += if lhs { -rhs } else { rhs };
         }
-        dst[j] += acc;
+        *dst += acc;
     }
 }
 
