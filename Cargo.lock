@@ -385,29 +385,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cuts"
-version = "0.1.0"
-dependencies = [
- "aligned-vec 0.6.0",
- "bytemuck",
- "clap",
- "diol",
- "dyn-stack",
- "equator",
- "eyre",
- "faer",
- "flate2",
- "half",
- "image",
- "itertools 0.13.0",
- "pulp",
- "rand",
- "rand_distr",
- "reborrow",
- "safetensors",
-]
-
-[[package]]
 name = "dbgf"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1625,6 +1602,29 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "signtensors"
+version = "0.1.0"
+dependencies = [
+ "aligned-vec 0.6.0",
+ "bytemuck",
+ "clap",
+ "diol",
+ "dyn-stack",
+ "equator",
+ "eyre",
+ "faer",
+ "flate2",
+ "half",
+ "image",
+ "itertools 0.13.0",
+ "pulp",
+ "rand",
+ "rand_distr",
+ "reborrow",
+ "safetensors",
 ]
 
 [[package]]
