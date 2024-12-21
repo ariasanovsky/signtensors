@@ -1,17 +1,16 @@
 mod backend;
 
 use core::f32;
-use std::{fs::File, io::Read};
+use std::fs::File;
 
 use clap::Parser;
-use cuts::{inplace_sct::CutHelper, SignMatMut};
 use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
 use equator::assert;
-use faer::{linalg::temp_mat_req, solvers::SolverCore, Col, ColMut, ColRef, Mat, MatMut, MatRef};
+use faer::{linalg::temp_mat_req, Col, Mat};
 use image::{open, ImageBuffer, Rgb};
 use itertools::Itertools;
 use rand::{rngs::StdRng, SeedableRng};
-use reborrow::{Reborrow, ReborrowMut};
+use reborrow::ReborrowMut;
 
 use backend::*;
 

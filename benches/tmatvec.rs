@@ -1,6 +1,6 @@
 use aligned_vec::avec;
-use cuts::{bitmagic::tmatvec, MatRef, SignMatRef};
 use diol::prelude::*;
+use signtensors::{bitmagic::tmatvec, MatRef, SignMatRef};
 
 fn v4(bencher: Bencher, PlotArg(m): PlotArg) {
     if let Some(simd) = pulp::x86::V4::try_new() {

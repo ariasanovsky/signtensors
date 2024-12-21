@@ -1,11 +1,11 @@
 use aligned_vec::{avec, AVec};
 use core::iter::zip;
-use cuts::SignMatRef;
 use diol::prelude::*;
 use equator::assert;
 use half::bf16;
 use pulp::{x86::V4, *};
 use rand::prelude::*;
+use signtensors::SignMatRef;
 
 // S C T^top x
 
@@ -714,23 +714,23 @@ fn sctvec_f32(
 
     let s = if transpose_s {
         SignMatRef::from_storage(
-            cuts::MatRef::from_col_major_slice(s, width.div_ceil(64), m, width.div_ceil(64)),
+            signtensors::MatRef::from_col_major_slice(s, width.div_ceil(64), m, width.div_ceil(64)),
             width,
         )
     } else {
         SignMatRef::from_storage(
-            cuts::MatRef::from_col_major_slice(s, m.div_ceil(64), width, m.div_ceil(64)),
+            signtensors::MatRef::from_col_major_slice(s, m.div_ceil(64), width, m.div_ceil(64)),
             m,
         )
     };
     let t = if transpose_t {
         SignMatRef::from_storage(
-            cuts::MatRef::from_col_major_slice(t, width.div_ceil(64), n, width.div_ceil(64)),
+            signtensors::MatRef::from_col_major_slice(t, width.div_ceil(64), n, width.div_ceil(64)),
             width,
         )
     } else {
         SignMatRef::from_storage(
-            cuts::MatRef::from_col_major_slice(t, n.div_ceil(64), width, n.div_ceil(64)),
+            signtensors::MatRef::from_col_major_slice(t, n.div_ceil(64), width, n.div_ceil(64)),
             n,
         )
     };
@@ -743,17 +743,17 @@ fn sctvec_f32(
         tmp.fill(0.0);
         y.fill(0.0);
         if transpose_t {
-            cuts::bitmagic::matvec::matvec_f32(tmp, t, x);
+            signtensors::bitmagic::matvec::matvec_f32(tmp, t, x);
         } else {
-            cuts::bitmagic::tmatvec::tmatvec_f32(tmp, t, x);
+            signtensors::bitmagic::tmatvec::tmatvec_f32(tmp, t, x);
         }
         for (x, &c) in zip(&mut *tmp, c) {
             *x = c * *x;
         }
         if transpose_s {
-            cuts::bitmagic::tmatvec::tmatvec_f32(y, s, tmp);
+            signtensors::bitmagic::tmatvec::tmatvec_f32(y, s, tmp);
         } else {
-            cuts::bitmagic::matvec::matvec_f32(y, s, tmp);
+            signtensors::bitmagic::matvec::matvec_f32(y, s, tmp);
         }
     })
 }

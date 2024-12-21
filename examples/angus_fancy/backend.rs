@@ -1,10 +1,10 @@
 use core::f32;
 
-use cuts::{inplace_sct::CutHelper, SignMatMut};
 use dyn_stack::PodStack;
 use equator::assert;
 use faer::{solvers::SolverCore, Col, ColMut, ColRef, Mat, MatMut, MatRef};
 use reborrow::{Reborrow, ReborrowMut};
+use signtensors::{inplace_sct::CutHelper, SignMatMut};
 
 pub(crate) enum RgbVector {
     Blowup {
@@ -206,9 +206,9 @@ pub(crate) fn greedy_cut(
             }
         });
     }
-    let s_ones = cuts::MatMut::from_col_major_slice(&mut s_ones, bit_rows, 1, bit_rows);
+    let s_ones = signtensors::MatMut::from_col_major_slice(&mut s_ones, bit_rows, 1, bit_rows);
     let mut s_ones = SignMatMut::from_storage(s_ones, nrows);
-    let t_ones = cuts::MatMut::from_col_major_slice(&mut t_ones, bit_cols, 1, bit_cols);
+    let t_ones = signtensors::MatMut::from_col_major_slice(&mut t_ones, bit_cols, 1, bit_cols);
     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
 
     let _ = improve_greedy_cut(
@@ -466,11 +466,19 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                             }
                         });
                     }
-                    let s_ones =
-                        cuts::MatMut::from_col_major_slice(&mut s_ones, bit_rows, 1, bit_rows);
+                    let s_ones = signtensors::MatMut::from_col_major_slice(
+                        &mut s_ones,
+                        bit_rows,
+                        1,
+                        bit_rows,
+                    );
                     let mut s_ones = SignMatMut::from_storage(s_ones, nrows);
-                    let t_ones =
-                        cuts::MatMut::from_col_major_slice(&mut t_ones, bit_cols, 1, bit_cols);
+                    let t_ones = signtensors::MatMut::from_col_major_slice(
+                        &mut t_ones,
+                        bit_cols,
+                        1,
+                        bit_cols,
+                    );
                     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
                     let _ = improve_greedy_cut(
                         two_remainder.as_ref(),
@@ -585,11 +593,19 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                             }
                         });
                     }
-                    let s_ones =
-                        cuts::MatMut::from_col_major_slice(&mut s_ones, bit_rows, 1, bit_rows);
+                    let s_ones = signtensors::MatMut::from_col_major_slice(
+                        &mut s_ones,
+                        bit_rows,
+                        1,
+                        bit_rows,
+                    );
                     let mut s_ones = SignMatMut::from_storage(s_ones, nrows);
-                    let t_ones =
-                        cuts::MatMut::from_col_major_slice(&mut t_ones, bit_cols, 1, bit_cols);
+                    let t_ones = signtensors::MatMut::from_col_major_slice(
+                        &mut t_ones,
+                        bit_cols,
+                        1,
+                        bit_cols,
+                    );
                     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
                     let _ = improve_greedy_cut(
                         two_remainder.as_ref(),

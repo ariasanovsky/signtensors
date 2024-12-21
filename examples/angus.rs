@@ -1,10 +1,10 @@
 use clap::Parser;
-use cuts::sct_tensor::{Cut, Remainder};
 use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
 use faer::Col;
 use image::{open, ImageBuffer, Rgb};
 use rand::{rngs::StdRng, SeedableRng};
 use reborrow::ReborrowMut;
+use signtensors::sct_tensor::{Cut, Remainder};
 
 #[derive(Debug, Parser)]
 #[command(name = "Angus")]
