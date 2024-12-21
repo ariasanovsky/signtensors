@@ -36,7 +36,9 @@ pub mod x86 {
                 let n = lhs.ncols();
 
                 for j in 0..n {
-                    let lhs = bytemuck::cast_slice::<_, u16>(lhs.storage().col_as_slice(j));
+                    let lhs = bytemuck::cast_slice::<_, u16>(
+                        lhs.storage().col(j).try_as_slice().unwrap(),
+                    );
 
                     let rhs = rhs[j];
                     let pos_rhs = simd.splat_f32x16(rhs);
@@ -56,10 +58,10 @@ pub mod x86 {
                     if m % 16 != 0 {
                         let lhs = &lhs[m / 16];
 
-                        let mut dst_ = simd.f32s_partial_load(dst_tail);
+                        let mut dst_ = simd.partial_load_f32s(dst_tail);
                         let acc = simd.select_f32x16(b16(*lhs), neg_rhs, pos_rhs);
                         dst_ = simd.add_f32x16(dst_, acc);
-                        simd.f32s_partial_store(dst_tail, dst_);
+                        simd.partial_store_f32s(dst_tail, dst_);
                     }
                 }
             }
@@ -115,7 +117,8 @@ pub mod x86 {
                 let sign_bit = simd.splat_u32x8(u32::MAX / 2 + 1);
 
                 for j in 0..n {
-                    let lhs = bytemuck::cast_slice::<_, u8>(lhs.storage().col_as_slice(j));
+                    let lhs =
+                        bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
 
                     let rhs = rhs[j];
                     let rhs = simd.splat_f32x8(rhs);
@@ -165,14 +168,14 @@ pub mod x86 {
                     if m % 8 != 0 {
                         let lhs = &lhs[m / 8];
 
-                        let mut dst_ = simd.f32s_partial_load(dst_tail);
+                        let mut dst_ = simd.partial_load_f32s(dst_tail);
                         let lhs = simd.shl_const_u32x8::<24>(simd.shl_dyn_u32x8(
                             simd.and_u32x8(simd.splat_u32x8(*lhs as u32), MASK),
                             SHIFT,
                         ));
                         let acc = simd.xor_f32x8(cast(lhs), rhs);
                         dst_ = simd.add_f32x8(dst_, acc);
-                        simd.f32s_partial_store(dst_tail, dst_);
+                        simd.partial_store_f32s(dst_tail, dst_);
                     }
                 }
             }
@@ -193,7 +196,7 @@ pub fn matvec_f32_scalar(dst: &mut [f32], lhs: SignMatRef<'_>, rhs: &[f32]) {
 
     for j in 0..n {
         let rhs = rhs[j];
-        let lhs = bytemuck::cast_slice::<_, u8>(lhs.storage().col_as_slice(j));
+        let lhs = bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
 
         for i in 0..m {
             let div = i / 8;
@@ -224,7 +227,6 @@ pub fn matvec_f32(dst: &mut [f32], lhs: SignMatRef<'_>, rhs: &[f32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MatRef;
     use equator::assert;
     use rand::prelude::*;
 
@@ -242,7 +244,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let lhs =
-                SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, n, stride), m);
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, n), m);
 
             let rhs = (0..n).map(|_| rng.gen::<f32>()).collect::<Vec<_>>();
             let acc = (0..m).map(|_| rng.gen::<f32>()).collect::<Vec<_>>();
@@ -271,7 +273,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             let lhs =
-                SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, n, stride), m);
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, n), m);
 
             let rhs = (0..n).map(|_| rng.gen::<f32>()).collect::<Vec<_>>();
             let acc = (0..m).map(|_| rng.gen::<f32>()).collect::<Vec<_>>();

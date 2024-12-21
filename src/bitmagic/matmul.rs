@@ -1,12 +1,12 @@
 use crate::{MatMut, SignMatRef};
-use dyn_stack::PodStack;
 use equator::assert;
+use faer::dyn_stack::PodStack;
 use reborrow::*;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86 {
     use super::*;
-    use dyn_stack::{GlobalPodBuffer, StackReq};
+    use faer::dyn_stack::{GlobalPodBuffer, StackReq};
     use itertools::izip;
     use pulp::{cast, x86::V3, Simd};
 
@@ -174,9 +174,9 @@ pub mod x86 {
         let mut dst = dst;
         macro_rules! do_it {
             ($i: expr, $j: expr) => {{
-                let col = dst.rb_mut().col_as_slice_mut($j);
-                let dst = simd.f32s_partial_load(col);
-                simd.f32s_partial_store(col, simd.add_f32x8(dst, acc[$i][$j]));
+                let col = dst.rb_mut().col_mut($j).try_as_slice_mut().unwrap();
+                let dst = simd.partial_load_f32s(col);
+                simd.partial_store_f32s(col, simd.add_f32x8(dst, acc[$i][$j]));
             }};
         }
 
@@ -394,7 +394,6 @@ pub fn mat_tmat_f32(dst: MatMut<'_, f32>, lhs: SignMatRef<'_>, rhs: SignMatRef<'
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MatRef;
     use equator::assert;
     use rand::prelude::*;
 
@@ -412,14 +411,14 @@ mod tests {
                 .map(|_| rng.gen::<u64>())
                 .collect::<Vec<_>>();
             let lhs =
-                SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, k, stride), m);
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, k), m);
 
             let stride = n.div_ceil(64);
             let data = (0..k * stride)
                 .map(|_| rng.gen::<u64>())
                 .collect::<Vec<_>>();
             let rhs =
-                SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, k, stride), n);
+                SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, k), n);
 
             let diag = &*(0..k).map(|_| rng.gen::<f32>()).collect::<Vec<_>>();
 
@@ -428,8 +427,8 @@ mod tests {
 
             let dst_actual = &mut *acc.clone();
             let dst_target = &mut *acc.clone();
-            let mut dst_actual = MatMut::from_col_major_slice(dst_actual, m, n, m);
-            let mut dst_target = MatMut::from_col_major_slice(dst_target, m, n, m);
+            let mut dst_actual = faer::mat::from_column_major_slice_mut(dst_actual, m, n);
+            let mut dst_target = faer::mat::from_column_major_slice_mut(dst_target, m, n);
 
             x86::mat_tmat_f32_v3(simd, dst_actual.rb_mut(), lhs, rhs, diag);
             mat_tmat_f32_scalar(dst_target.rb_mut(), lhs, rhs, diag);

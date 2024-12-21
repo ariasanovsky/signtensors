@@ -4,9 +4,12 @@ use core::f32;
 use std::fs::File;
 
 use clap::Parser;
-use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
 use equator::assert;
-use faer::{linalg::temp_mat_req, Col, Mat};
+use faer::{
+    dyn_stack::{GlobalPodBuffer, PodStack, StackReq},
+    linalg::temp_mat_req,
+    Col, Mat,
+};
 use image::{open, ImageBuffer, Rgb};
 use itertools::Itertools;
 use rand::{rngs::StdRng, SeedableRng};

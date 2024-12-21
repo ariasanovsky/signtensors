@@ -38,22 +38,12 @@ impl Sct {
         } = self;
         SctRef {
             s: SignMatRef::from_storage(
-                crate::MatRef::from_col_major_slice(
-                    s,
-                    nrows.div_ceil(64),
-                    *width,
-                    nrows.div_ceil(64),
-                ),
+                faer::mat::from_column_major_slice(s, nrows.div_ceil(64), *width),
                 *nrows,
             ),
             c: c.as_slice(),
             t: SignMatRef::from_storage(
-                crate::MatRef::from_col_major_slice(
-                    t,
-                    ncols.div_ceil(64),
-                    *width,
-                    ncols.div_ceil(64),
-                ),
+                faer::mat::from_column_major_slice(t, ncols.div_ceil(64), *width),
                 *ncols,
             ),
         }
@@ -71,22 +61,12 @@ impl Sct {
         } = self;
         SctMut {
             s: SignMatMut::from_storage(
-                crate::MatMut::from_col_major_slice(
-                    s,
-                    nrows.div_ceil(64),
-                    *width,
-                    nrows.div_ceil(64),
-                ),
+                faer::mat::from_column_major_slice_mut(s, nrows.div_ceil(64), *width),
                 *nrows,
             ),
             c: c.as_slice_mut(),
             t: SignMatMut::from_storage(
-                crate::MatMut::from_col_major_slice(
-                    t,
-                    ncols.div_ceil(64),
-                    *width,
-                    ncols.div_ceil(64),
-                ),
+                faer::mat::from_column_major_slice_mut(t, ncols.div_ceil(64), *width),
                 *ncols,
             ),
         }

@@ -1,9 +1,13 @@
 use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
-use faer::{linalg::temp_mat_req, Mat, MatRef};
+use faer::{dyn_stack, linalg::temp_mat_req, Mat, MatRef};
 use rand::Rng;
 use reborrow::{Reborrow, ReborrowMut};
 
-use crate::{bitmagic::matmul::mat_tmat_f32, inplace_sct::CutHelper, sct::{Sct, SctMut, SctRef}};
+use crate::{
+    bitmagic::matmul::mat_tmat_f32,
+    inplace_sct::CutHelper,
+    sct::{Sct, SctMut, SctRef},
+};
 
 pub fn width(nrows: usize, ncols: usize, compression_rate: f64) -> usize {
     let numerator = compression_rate * (nrows * ncols) as f64;
@@ -104,8 +108,7 @@ impl SctHelper {
         } = self;
         {
             let SctMut { mut s, c, mut t } = block.as_mut();
-            let two_remainder =
-                crate::MatMut::from_faer(two_remainder.as_mut());
+            let two_remainder = two_remainder.as_mut();
             crate::bitmagic::matmul::mat_tmat_f32(
                 two_remainder,
                 s.rb_mut().split_at_col_mut(*how_full).0.rb(),
@@ -120,12 +123,10 @@ impl SctHelper {
 
         let SctRef { s, c, t } = block.as_ref();
         for k in 0..*how_full {
-            sct.s[nrows.div_ceil(64) * sct.how_full..]
-                [..nrows.div_ceil(64)]
-                .copy_from_slice(s.rb().storage().col_as_slice(k));
-            sct.t[ncols.div_ceil(64) * sct.how_full..]
-                [..ncols.div_ceil(64)]
-                .copy_from_slice(t.rb().storage().col_as_slice(k));
+            sct.s[nrows.div_ceil(64) * sct.how_full..][..nrows.div_ceil(64)]
+                .copy_from_slice(s.rb().storage().col(k).try_as_slice().unwrap());
+            sct.t[ncols.div_ceil(64) * sct.how_full..][..ncols.div_ceil(64)]
+                .copy_from_slice(t.rb().storage().col(k).try_as_slice().unwrap());
             sct.c[sct.how_full] = -c[k] / 2.0;
             sct.how_full += 1;
         }
@@ -138,7 +139,7 @@ impl SctHelper {
 
     pub fn expand(&self) -> Mat<f32> {
         let mut mat = Mat::zeros(self.nrows, self.ncols);
-        let mat_mut = crate::MatMut::from_faer(mat.as_mut());
+        let mat_mut = mat.as_mut();
         let SctRef { s, c, t } = self.sct.as_ref();
         mat_tmat_f32(mat_mut, s, t, c);
         mat

@@ -1,6 +1,8 @@
 use clap::Parser;
-use dyn_stack::{GlobalPodBuffer, PodStack, StackReq};
-use faer::Col;
+use faer::{
+    dyn_stack::{GlobalPodBuffer, PodStack, StackReq},
+    Col,
+};
 use image::{open, ImageBuffer, Rgb};
 use rand::{rngs::StdRng, SeedableRng};
 use reborrow::ReborrowMut;
