@@ -6,94 +6,67 @@ use rand::prelude::*;
 use reborrow::*;
 
 pub struct CutHelper {
-    t_signs_old: Box<[u64]>,
-    s_signs_old: Box<[u64]>,
-    t_signs: Box<[u64]>,
-    s_signs: Box<[u64]>,
-    t_image: Col<f32>,
-    s_image: Col<f32>,
+    pub t_signs_old: Box<[u64]>,
+    pub s_signs_old: Box<[u64]>,
+    pub t_signs: Box<[u64]>,
+    pub s_signs: Box<[u64]>,
+    pub t_image_half: Col<f32>,
+    pub s_image_half: Col<f32>,
 }
 
-impl CutHelper {
-    pub fn new(two_mat: MatRef<'_, f32>, two_mat_transposed: MatRef<'_, f32>) -> Self {
-        let nrows = two_mat.nrows();
-        let ncols = two_mat.ncols();
+pub struct CutHelperMut<'a> {
+    pub t_signs_old: &'a mut [u64],
+    pub s_signs_old: &'a mut [u64],
+    pub t_signs: &'a mut [u64],
+    pub s_signs: &'a mut [u64],
+    pub t_image_half: ColMut<'a, f32>,
+    pub s_image_half: ColMut<'a, f32>,
+}
 
-        let s_ones = vec![0u64; nrows.div_ceil(64)].into_boxed_slice();
-        let t_ones = vec![0u64; ncols.div_ceil(64)].into_boxed_slice();
-
-        CutHelper::new_with_st(two_mat, two_mat_transposed, s_ones, t_ones)
-    }
-
-    pub fn new_with_st(
-        two_mat: MatRef<'_, f32>,
-        two_mat_transposed: MatRef<'_, f32>,
-        s_ones: Box<[u64]>,
-        t_ones: Box<[u64]>,
-    ) -> Self {
-        let (nrows, ncols) = two_mat.shape();
-        let mut s_image = Col::<f32>::zeros(ncols);
-        let mut t_image = Col::<f32>::zeros(nrows);
-
-        bitmagic::matvec_bit(
-            ncols,
-            nrows,
-            s_image.as_slice_mut(),
-            two_mat_transposed,
-            &bytemuck::cast_slice(&s_ones)[..nrows.div_ceil(16)],
-        );
-        bitmagic::matvec_bit(
-            nrows,
-            ncols,
-            t_image.as_slice_mut(),
-            two_mat,
-            &bytemuck::cast_slice(&t_ones)[..ncols.div_ceil(16)],
-        );
-        s_image *= faer::scale(0.5f32);
-        t_image *= faer::scale(0.5f32);
-
-        Self {
-            t_signs: t_ones.clone(),
-            t_image,
-            s_signs: s_ones.clone(),
-            s_image,
-            t_signs_old: t_ones,
-            s_signs_old: s_ones,
-        }
-    }
-
+impl CutHelperMut<'_> {
     // remainder (+ S * C * T^top)
     pub fn cut_mat(
         &mut self,
-        two_remainder: MatRef<'_, f32>,
-        two_remainder_transposed: MatRef<'_, f32>,
+        remainder: MatRef<'_, f32>,
+        remainder_transposed: MatRef<'_, f32>,
         S: SignMatMut<'_>,
         C: ColMut<'_, f32>,
         T: SignMatMut<'_>,
-        rng: &mut dyn rand::RngCore,
+        rng: &mut dyn RngCore,
         max_iterations: usize,
         stack: &mut PodStack,
     ) -> f32 {
         let Self {
             t_signs,
-            t_image: _,
             s_signs: _,
-            s_image: _,
+            t_image_half,
+            s_image_half: _,
             t_signs_old,
             s_signs_old: _,
         } = self;
         assert!(all(
-            two_remainder.row_stride() == 1,
-            two_remainder_transposed.row_stride() == 1,
+            remainder.row_stride() == 1,
+            remainder_transposed.row_stride() == 1,
             C.nrows() > 0,
         ));
 
         t_signs_old.copy_from_slice(t_signs);
-        t_signs.iter_mut().for_each(|t_sign| *t_sign = rng.gen());
+        rng.fill_bytes(bytemuck::cast_slice_mut(t_signs));
+
+        mul_add_with_rank_update(
+            t_image_half.rb_mut().try_as_slice_mut().unwrap(),
+            remainder.rb(),
+            S.rb(),
+            C.rb(),
+            T.rb(),
+            bytemuck::cast_slice(t_signs),
+            bytemuck::cast_slice(t_signs_old),
+            stack,
+        );
 
         self.cut_mat_inplace(
-            two_remainder,
-            two_remainder_transposed,
+            remainder,
+            remainder_transposed,
             S,
             C,
             T,
@@ -104,25 +77,25 @@ impl CutHelper {
 
     pub fn cut_mat_inplace(
         &mut self,
-        two_remainder: MatRef<'_, f32>,
-        two_remainder_transposed: MatRef<'_, f32>,
+        remainder: MatRef<'_, f32>,
+        remainder_transposed: MatRef<'_, f32>,
         S: SignMatMut<'_>,
         C: ColMut<'_, f32>,
         T: SignMatMut<'_>,
         max_iterations: usize,
-        mut stack: &mut PodStack,
+        stack: &mut PodStack,
     ) -> f32 {
         let Self {
             t_signs,
-            t_image,
             s_signs,
-            s_image,
+            t_image_half,
+            s_image_half,
             t_signs_old,
             s_signs_old,
         } = self;
         assert!(all(
-            two_remainder.row_stride() == 1,
-            two_remainder_transposed.row_stride() == 1,
+            remainder.row_stride() == 1,
+            remainder_transposed.row_stride() == 1,
             C.nrows() > 0,
         ));
 
@@ -141,19 +114,15 @@ impl CutHelper {
         let C = C.rb();
         let C_next = C_next.get_mut(0);
 
-        mul_add_with_rank_update(
-            t_image.as_slice_mut(),
-            two_remainder.rb(),
-            S,
-            C,
-            T,
-            bytemuck::cast_slice(t_signs),
-            bytemuck::cast_slice(t_signs_old),
-            stack.rb_mut(),
-        );
         {
             let s_signs = bytemuck::cast_slice::<u64, u8>(s_signs);
-            for (i, &t) in t_image.as_slice().iter().enumerate() {
+            for (i, &t) in t_image_half
+                .rb_mut()
+                .try_as_slice()
+                .unwrap()
+                .iter()
+                .enumerate()
+            {
                 let div = i / 8;
                 let rem = i % 8;
                 let sign = (((s_signs[div] >> rem) & 1 == 1) as u32) << 31;
@@ -162,32 +131,32 @@ impl CutHelper {
         }
         for _ in 0..max_iterations {
             let improved_s = improve_with_rank_update(
-                two_remainder_transposed.rb(),
+                remainder_transposed.rb(),
                 T,
                 C,
                 S,
-                t_image.as_ref(),
+                t_image_half.as_ref(),
                 bytemuck::cast_slice_mut(s_signs_old.as_mut()),
                 bytemuck::cast_slice_mut(s_signs.as_mut()),
-                s_image.as_mut(),
+                s_image_half.as_mut(),
                 &mut cut,
-                stack.rb_mut(),
+                stack,
             );
 
             if !improved_s {
                 break;
             }
             let improved_t = improve_with_rank_update(
-                two_remainder.rb(),
+                remainder.rb(),
                 S,
                 C,
                 T,
-                s_image.as_ref(),
+                s_image_half.as_ref(),
                 bytemuck::cast_slice_mut(t_signs_old.as_mut()),
                 bytemuck::cast_slice_mut(t_signs.as_mut()),
-                t_image.as_mut(),
+                t_image_half.as_mut(),
                 &mut cut,
-                stack.rb_mut(),
+                stack,
             );
 
             if !improved_t {
@@ -195,7 +164,7 @@ impl CutHelper {
             }
         }
 
-        let normalization = two_remainder.nrows() * two_remainder.ncols();
+        let normalization = remainder.nrows() * remainder.ncols();
         let normalized_cut = cut / normalization as f32;
         // remainder <- remainder - S * c * T^top
         // s_image <- s_image - T * c * S^top * S
@@ -205,23 +174,35 @@ impl CutHelper {
             let t_signs = bytemuck::cast_slice::<u64, u8>(t_signs);
             let s_signs = bytemuck::cast_slice::<u64, u8>(s_signs);
 
-            let k = cut / two_remainder.ncols() as f32;
-            for (i, s) in s_image.as_slice_mut().iter_mut().enumerate() {
+            let k = cut / remainder.ncols() as f32;
+            for (i, s) in s_image_half
+                .rb_mut()
+                .try_as_slice_mut()
+                .unwrap()
+                .iter_mut()
+                .enumerate()
+            {
                 let div = i / 8;
                 let rem = i % 8;
                 let sign = (((t_signs[div] >> rem) & 1 == 1) as u32) << 31;
                 *s -= f32::from_bits(k.to_bits() ^ sign)
             }
 
-            let k = cut / two_remainder.nrows() as f32;
-            for (i, t) in t_image.as_slice_mut().iter_mut().enumerate() {
+            let k = cut / remainder.nrows() as f32;
+            for (i, t) in t_image_half
+                .rb_mut()
+                .try_as_slice_mut()
+                .unwrap()
+                .iter_mut()
+                .enumerate()
+            {
                 let div = i / 8;
                 let rem = i % 8;
                 let sign = (((s_signs[div] >> rem) & 1 == 1) as u32) << 31;
                 *t -= f32::from_bits(k.to_bits() ^ sign)
             }
         }
-        *C_next = -2.0 * normalized_cut;
+        *C_next = -normalized_cut;
         S_next
             .storage_mut()
             .col_mut(0)
@@ -236,6 +217,111 @@ impl CutHelper {
             .copy_from_slice(t_signs);
 
         cut
+    }
+}
+
+impl CutHelper {
+    pub fn new(mat: MatRef<'_, f32>, mat_transposed: MatRef<'_, f32>) -> Self {
+        let nrows = mat.nrows();
+        let ncols = mat.ncols();
+
+        let s_ones = vec![0u64; nrows.div_ceil(64)].into_boxed_slice();
+        let t_ones = vec![0u64; ncols.div_ceil(64)].into_boxed_slice();
+
+        CutHelper::new_with_st(mat, mat_transposed, s_ones, t_ones)
+    }
+
+    pub fn new_with_st(
+        mat: MatRef<'_, f32>,
+        mat_transposed: MatRef<'_, f32>,
+        s_signs: Box<[u64]>,
+        t_signs: Box<[u64]>,
+    ) -> Self {
+        let (nrows, ncols) = mat.shape();
+        let mut s_image_half = Col::<f32>::zeros(ncols);
+        let mut t_image_half = Col::<f32>::zeros(nrows);
+
+        bitmagic::matvec_bit(
+            ncols,
+            nrows,
+            s_image_half.as_slice_mut(),
+            mat_transposed,
+            &bytemuck::cast_slice(&s_signs)[..nrows.div_ceil(16)],
+        );
+        bitmagic::matvec_bit(
+            nrows,
+            ncols,
+            t_image_half.as_slice_mut(),
+            mat,
+            &bytemuck::cast_slice(&t_signs)[..ncols.div_ceil(16)],
+        );
+        s_image_half *= faer::scale(0.5f32);
+        t_image_half *= faer::scale(0.5f32);
+
+        Self {
+            t_signs: t_signs.clone(),
+            s_signs: s_signs.clone(),
+            t_image_half,
+            s_image_half,
+            t_signs_old: t_signs,
+            s_signs_old: s_signs,
+        }
+    }
+
+    pub fn as_mut(&mut self) -> CutHelperMut<'_> {
+        CutHelperMut {
+            t_signs_old: &mut self.t_signs_old,
+            s_signs_old: &mut self.s_signs_old,
+            t_signs: &mut self.t_signs,
+            s_signs: &mut self.s_signs,
+            t_image_half: self.t_image_half.as_mut(),
+            s_image_half: self.s_image_half.as_mut(),
+        }
+    }
+
+    // remainder (+ S * C * T^top)
+    pub fn cut_mat(
+        &mut self,
+        remainder: MatRef<'_, f32>,
+        remainder_transposed: MatRef<'_, f32>,
+        S: SignMatMut<'_>,
+        C: ColMut<'_, f32>,
+        T: SignMatMut<'_>,
+        rng: &mut dyn RngCore,
+        max_iterations: usize,
+        stack: &mut PodStack,
+    ) -> f32 {
+        self.as_mut().cut_mat(
+            remainder,
+            remainder_transposed,
+            S,
+            C,
+            T,
+            rng,
+            max_iterations,
+            stack,
+        )
+    }
+
+    pub fn cut_mat_inplace(
+        &mut self,
+        remainder: MatRef<'_, f32>,
+        remainder_transposed: MatRef<'_, f32>,
+        S: SignMatMut<'_>,
+        C: ColMut<'_, f32>,
+        T: SignMatMut<'_>,
+        max_iterations: usize,
+        stack: &mut PodStack,
+    ) -> f32 {
+        self.as_mut().cut_mat_inplace(
+            remainder,
+            remainder_transposed,
+            S,
+            C,
+            T,
+            max_iterations,
+            stack,
+        )
     }
 }
 
@@ -365,9 +451,9 @@ fn mul_add_with_rank_update(
         }
         *y = acc as f32;
     }
-    // y = C * y
+    // y = 2.0 * C * y
     for (y, &c) in zip(&mut *y, C.try_as_slice().unwrap()) {
-        *y *= c;
+        *y *= 2.0 * c;
     }
     // acc += S * y
     bitmagic::matvec::matvec_f32(acc, S, y);
@@ -460,9 +546,9 @@ mod tests {
         let A: Mat<f32> = faer::stats::StandardNormalMat { nrows, ncols }.sample(rng);
         let init_norm = A.squared_norm_l2();
 
-        let mut two_remainder: Mat<f32> = faer::scale(2.0f32) * &A;
-        let mut two_remainder_transposed = faer::scale(2.0f32) * A.transpose();
-        let mut helper = CutHelper::new(two_remainder.as_ref(), two_remainder_transposed.as_ref());
+        let mut remainder: Mat<f32> = A.to_owned();
+        let mut remainder_transposed = A.transpose().to_owned();
+        let mut helper = CutHelper::new(remainder.as_ref(), remainder_transposed.as_ref());
         let mut S = vec![0u64; (nrows.div_ceil(64)) * blocksize].into_boxed_slice();
         let mut T = vec![0u64; (ncols.div_ceil(64)) * blocksize].into_boxed_slice();
         let mut C = Col::<f32>::zeros(blocksize);
@@ -485,7 +571,7 @@ mod tests {
             StackReq::new::<u64>(Ord::max(nrows, ncols))
                 .and(temp_mat_req::<f32>(blocksize, 1).unwrap()),
         );
-        let mut stack = PodStack::new(&mut mem);
+        let stack = PodStack::new(&mut mem);
 
         let mut full_S: Vec<u64> = vec![];
         let mut full_T: Vec<u64> = vec![];
@@ -497,59 +583,54 @@ mod tests {
         while iter < 20000 {
             if how_full == blocksize {
                 {
-                    let two_remainder = two_remainder.as_mut();
-                    crate::bitmagic::matmul::mat_tmat_f32(
-                        two_remainder,
-                        S.rb(),
-                        T.rb(),
-                        C.as_slice(),
-                    );
+                    let remainder = remainder.as_mut();
+                    crate::bitmagic::matmul::mat_tmat_f32(remainder, S.rb(), T.rb(), C.as_slice());
                 }
 
-                two_remainder_transposed
+                remainder_transposed
                     .as_mut()
-                    .copy_from(two_remainder.transpose());
-                remainder_norm = two_remainder.squared_norm_l2() / 4.0;
+                    .copy_from(remainder.transpose());
+                remainder_norm = remainder.squared_norm_l2() / 4.0;
 
                 for k in 0..blocksize {
                     full_S.extend_from_slice(S.rb().storage().col(k).try_as_slice().unwrap());
                     full_T.extend_from_slice(T.rb().storage().col(k).try_as_slice().unwrap());
-                    full_C.push(-C[k] / 2.0);
+                    full_C.push(-C[k]);
                 }
                 how_full = 0;
             }
 
             how_full += 1;
             let cut = helper.cut_mat(
-                two_remainder.as_ref(),
-                two_remainder_transposed.as_ref(),
+                remainder.as_ref(),
+                remainder_transposed.as_ref(),
                 S.rb_mut().split_at_col_mut(how_full).0,
                 C.get_mut(..how_full),
                 T.rb_mut().split_at_col_mut(how_full).0,
                 rng,
                 usize::MAX,
-                stack.rb_mut(),
+                stack,
             );
 
             remainder_norm -= (cut * cut) / (nrows * ncols) as f32;
             if remainder_norm <= bf16_residual {
                 {
-                    let two_remainder = two_remainder.as_mut();
+                    let remainder = remainder.as_mut();
                     crate::bitmagic::matmul::mat_tmat_f32(
-                        two_remainder,
+                        remainder,
                         S.rb_mut().split_at_col_mut(how_full).0.rb(),
                         T.rb_mut().split_at_col_mut(how_full).0.rb(),
                         &C.as_slice()[..how_full],
                     );
                 }
-                two_remainder_transposed
+                remainder_transposed
                     .as_mut()
-                    .copy_from(two_remainder.transpose());
+                    .copy_from(remainder.transpose());
 
                 for k in 0..how_full {
                     full_S.extend_from_slice(S.rb().storage().col(k).try_as_slice().unwrap());
                     full_T.extend_from_slice(T.rb().storage().col(k).try_as_slice().unwrap());
-                    full_C.push(-C[k] / 2.0);
+                    full_C.push(-C[k]);
                 }
 
                 break;

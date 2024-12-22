@@ -1,5 +1,14 @@
 #![allow(non_snake_case, clippy::too_many_arguments)]
 
+#[macro_export]
+macro_rules! concat {
+    () => {
+        ::core::compile_error!("signtensors::concat! requires at least one argument")
+    };
+    ($($sct: expr),+ $(,)?) => {
+        $crate::Concat::concat(&[$(($sct).as_ref(),)+])
+    };
+}
 use equator::assert;
 use faer::SimpleEntity;
 use reborrow::*;
@@ -9,9 +18,37 @@ pub mod bitmagic;
 
 pub mod inplace_sct;
 pub mod sct;
-pub mod sct_helper;
 
 pub mod sct_tensor;
+
+mod non_exhaustive {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct NonExhaustive {
+        __private: (),
+    }
+}
+
+use non_exhaustive::NonExhaustive;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SctParams {
+    pub blocksize: usize,
+    pub inner_iter: usize,
+    pub non_exhaustive: NonExhaustive,
+}
+
+impl Default for SctParams {
+    fn default() -> Self {
+        todo!()
+    }
+}
+
+pub fn foo() {
+    SctParams {
+        blocksize: 30,
+        ..Default::default()
+    };
+}
 
 trait Storage: SimpleEntity {}
 impl Storage for u8 {}
@@ -66,6 +103,17 @@ impl<'a> SignMatRef<'a> {
                     * (core::mem::size_of::<u64>() / core::mem::size_of::<T>()) as isize,
             )
         }
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn split_at_col(self, col: usize) -> (SignMatRef<'a>, SignMatRef<'a>) {
+        let nrows = self.nrows();
+        let (left, right) = self.storage().split_at_col(col);
+        (
+            Self::from_storage(left, nrows),
+            Self::from_storage(right, nrows),
+        )
     }
 }
 
@@ -173,4 +221,9 @@ impl<'a> IntoConst for SignMatMut<'a> {
             nrows: self.nrows,
         }
     }
+}
+
+pub trait Concat: Copy {
+    type Owned;
+    fn concat(list: &[Self]) -> Self::Owned;
 }
