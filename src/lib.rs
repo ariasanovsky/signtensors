@@ -21,35 +21,6 @@ pub mod sct;
 
 pub mod sct_tensor;
 
-mod non_exhaustive {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub struct NonExhaustive {
-        __private: (),
-    }
-}
-
-use non_exhaustive::NonExhaustive;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SctParams {
-    pub blocksize: usize,
-    pub inner_iter: usize,
-    pub non_exhaustive: NonExhaustive,
-}
-
-impl Default for SctParams {
-    fn default() -> Self {
-        todo!()
-    }
-}
-
-pub fn foo() {
-    SctParams {
-        blocksize: 30,
-        ..Default::default()
-    };
-}
-
 trait Storage: SimpleEntity {}
 impl Storage for u8 {}
 impl Storage for u16 {}

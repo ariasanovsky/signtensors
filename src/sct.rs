@@ -1,3 +1,5 @@
+use core::iter;
+
 use crate::{bitmagic, inplace_sct::CutHelperMut, Concat, SignMatMut, SignMatRef};
 use equator::assert;
 use faer::{
@@ -44,16 +46,14 @@ impl Concat for SctRef<'_> {
         ret.c.reserve_exact(width);
 
         for sct in sct {
-            let width = sct.width();
-
             let s = sct.s.storage();
             let t = sct.t.storage();
             let c = sct.c;
 
-            for j in 0..width {
-                ret.s.extend_from_slice(s.col(j).try_as_slice().unwrap());
-                ret.t.extend_from_slice(t.col(j).try_as_slice().unwrap());
-                ret.c.push(c[j]);
+            for ((s, t), c) in iter::zip(iter::zip(s.col_iter(), t.col_iter()), c.iter()) {
+                ret.s.extend_from_slice(s.try_as_slice().unwrap());
+                ret.t.extend_from_slice(t.try_as_slice().unwrap());
+                ret.c.push(*c);
             }
         }
 
@@ -83,7 +83,7 @@ impl SctRef<'_> {
     pub fn expand(&self) -> Mat<f32> {
         let Self { s, c, t } = *self;
         let mut mat = Mat::zeros(self.nrows(), self.ncols());
-        bitmagic::matmul::mat_tmat_f32(mat.as_mut(), s, t, &c);
+        bitmagic::matmul::mat_tmat_f32(mat.as_mut(), s, t, c);
         mat
     }
 }
