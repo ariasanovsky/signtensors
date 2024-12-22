@@ -13,13 +13,13 @@ use equator::assert;
 use faer::SimpleEntity;
 use reborrow::*;
 
+pub use faer;
+
 #[doc(hidden)]
 pub mod bitmagic;
 
 pub mod inplace_sct;
 pub mod sct;
-
-pub mod sct_tensor;
 
 trait Storage: SimpleEntity {}
 impl Storage for u8 {}
