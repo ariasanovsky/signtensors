@@ -180,8 +180,8 @@ pub(crate) fn greedy_cut(
     let (nrows, ncols) = mat.shape();
     let mut s = Col::from_fn(nrows, |_| if rng.gen() { -1.0f32 } else { 1.0 });
     let mut t = Col::from_fn(ncols, |_| if rng.gen() { -1.0f32 } else { 1.0 });
-    let two_remainder = faer::scale(2.0f32) * mat.rb();
-    let two_remainder_transposed = two_remainder.transpose().to_owned();
+    let remainder = mat.to_owned();
+    let remainder_transposed = remainder.transpose().to_owned();
     // let mut s_ones = vec![0u64; nrows.div_ceil(64)].into_boxed_slice();
     // let mut t_ones = vec![0u64; ncols.div_ceil(64)].into_boxed_slice();
     let (bit_rows, bit_cols) = (nrows.div_ceil(64), ncols.div_ceil(64));
@@ -213,8 +213,8 @@ pub(crate) fn greedy_cut(
     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
 
     let _ = improve_greedy_cut(
-        two_remainder.as_ref(),
-        two_remainder_transposed.as_ref(),
+        remainder.as_ref(),
+        remainder_transposed.as_ref(),
         // s.as_mut(),
         // t.as_mut(),
         s_ones.rb_mut(),
@@ -250,8 +250,8 @@ pub(crate) fn greedy_cut(
 }
 
 fn improve_greedy_cut(
-    two_remainder: MatRef<f32>,
-    two_remainder_transposed: MatRef<f32>,
+    remainder: MatRef<f32>,
+    remainder_transposed: MatRef<f32>,
     // s: ColMut<f32>,
     // t: ColMut<f32>,
     mut s_ones: SignMatMut,
@@ -259,8 +259,8 @@ fn improve_greedy_cut(
     stack: &mut PodStack,
 ) -> f32 {
     let mut helper: CutHelper = CutHelper::new_with_st(
-        two_remainder.as_ref(),
-        two_remainder_transposed.as_ref(),
+        remainder.as_ref(),
+        remainder_transposed.as_ref(),
         s_ones
             .rb()
             .storage()
@@ -283,8 +283,8 @@ fn improve_greedy_cut(
     let mut c = [0.0f32];
     let mut c = faer::col::from_slice_mut(&mut c);
     let new_c = helper.cut_mat_inplace(
-        two_remainder.as_ref(),
-        two_remainder_transposed.as_ref(),
+        remainder.as_ref(),
+        remainder_transposed.as_ref(),
         s_ones.rb_mut(),
         c.rb_mut(),
         t_ones.rb_mut(),
@@ -422,7 +422,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
     mut stack: &mut PodStack,
     max_iters: usize,
 ) -> (usize, usize) {
-    let remainder = r;
+    let rem = r;
     let (nrows, ncols) = a.shape();
     let width = rgb.width();
     // dbg!(width);
@@ -446,8 +446,8 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                     let r_j = r_j.combine_colors(k);
                     let s_j = smat.as_mat_mut().col_mut(j);
                     let t_j = tmat.as_mat_mut().col_mut(j);
-                    let two_remainder = faer::scale(2.0f32) * r_j.as_ref();
-                    let two_remainder_transposed = two_remainder.transpose().to_owned();
+                    let remainder = r_j.as_ref();
+                    let remainder_transposed = remainder.transpose().to_owned();
                     let (bit_rows, bit_cols) = (nrows.div_ceil(64), ncols.div_ceil(64));
                     let mut s_ones = vec![0u64; bit_rows].into_boxed_slice();
                     let mut t_ones = vec![0u64; bit_cols].into_boxed_slice();
@@ -476,8 +476,8 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                     let t_ones = faer::mat::from_column_major_slice_mut(&mut t_ones, bit_cols, 1);
                     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
                     let _ = improve_greedy_cut(
-                        two_remainder.as_ref(),
-                        two_remainder_transposed.as_ref(),
+                        remainder.as_ref(),
+                        remainder_transposed.as_ref(),
                         // s_j.as_mut(),
                         // t_j.as_mut(),
                         s_ones.rb_mut(),
@@ -517,7 +517,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                         };
                         // let rgb = todo!();
                         let _ = regress(a, smat, tmat, rgb.rb_mut());
-                        *remainder = a.minus(smat, tmat, rgb.rb());
+                        *rem = a.minus(smat, tmat, rgb.rb());
                         improved = true;
                     }
                 }
@@ -528,7 +528,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                         c: c.rb_mut(),
                     };
                     let _ = regress(a, smat, tmat, rgb.rb_mut());
-                    *remainder = a.minus(smat, tmat, rgb.rb());
+                    *rem = a.minus(smat, tmat, rgb.rb());
                     coefficient_updates += 1;
                 } else {
                     break;
@@ -563,8 +563,8 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                     let r_j = r_j.combine_colors(k);
                     let s_j = smat.as_mat_mut().col_mut(j);
                     let t_j = tmat.as_mat_mut().col_mut(j);
-                    let two_remainder = faer::scale(2.0f32) * r_j.as_ref();
-                    let two_remainder_transposed = two_remainder.transpose().to_owned();
+                    let remainder = r_j.as_ref();
+                    let remainder_transposed = remainder.transpose().to_owned();
                     let (bit_rows, bit_cols) = (nrows.div_ceil(64), ncols.div_ceil(64));
                     let mut s_ones = vec![0u64; bit_rows].into_boxed_slice();
                     let mut t_ones = vec![0u64; bit_cols].into_boxed_slice();
@@ -593,8 +593,8 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                     let t_ones = faer::mat::from_column_major_slice_mut(&mut t_ones, bit_cols, 1);
                     let mut t_ones = SignMatMut::from_storage(t_ones, ncols);
                     let _ = improve_greedy_cut(
-                        two_remainder.as_ref(),
-                        two_remainder_transposed.as_ref(),
+                        remainder.as_ref(),
+                        remainder_transposed.as_ref(),
                         // s_j.as_mut(),
                         // t_j.as_mut(),
                         s_ones.rb_mut(),
@@ -640,7 +640,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                         // };
                         // let rgb = todo!();
                         let _ = regress(a, smat, tmat, rgb.rb_mut());
-                        *remainder = a.minus(smat, tmat, rgb.rb());
+                        *rem = a.minus(smat, tmat, rgb.rb());
                         improved = true;
                         // todo!();
                     }
@@ -659,7 +659,7 @@ pub(crate) fn improve_signs_then_coefficients_repeatedly(
                         b: b.rb_mut(),
                     };
                     let _ = regress(a, smat, tmat, rgb.rb_mut());
-                    *remainder = a.minus(smat, tmat, rgb.rb());
+                    *rem = a.minus(smat, tmat, rgb.rb());
                     coefficient_updates += 1;
                 } else {
                     break;

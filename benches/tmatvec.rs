@@ -1,14 +1,13 @@
 use aligned_vec::avec;
 use diol::prelude::*;
-use signtensors::{bitmagic::tmatvec, MatRef, SignMatRef};
+use signtensors::{bitmagic::tmatvec, SignMatRef};
 
 fn v4(bencher: Bencher, PlotArg(m): PlotArg) {
     if let Some(simd) = pulp::x86::V4::try_new() {
         let n = m;
         let stride = m.div_ceil(64);
         let data = avec![!0u64; n * stride];
-        let lhs =
-            SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, n, stride), m);
+        let lhs = SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, n), m);
 
         let rhs = &*avec![1.0; m];
         let dst = &mut *avec![1.0; n];
@@ -22,8 +21,7 @@ fn v3(bencher: Bencher, PlotArg(m): PlotArg) {
         let n = m;
         let stride = m.div_ceil(64);
         let data = avec![!0u64; n * stride];
-        let lhs =
-            SignMatRef::from_storage(MatRef::from_col_major_slice(&data, stride, n, stride), m);
+        let lhs = SignMatRef::from_storage(faer::mat::from_column_major_slice(&data, stride, n), m);
 
         let rhs = &*avec![1.0; m];
         let dst = &mut *avec![1.0; n];

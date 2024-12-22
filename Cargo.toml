@@ -1,6 +1,6 @@
 [package]
 name = "signtensors"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["Alex Riasanovsky", "sarah quiñones"]
@@ -9,7 +9,7 @@ description = "Approximates tensors with sign frames."
 [dependencies]
 aligned-vec = "0.6.0"
 bytemuck = "1.16.0"
-equator = "0.4.1"
+equator = "0.4.2"
 faer = "0.20.1"
 itertools = { version = "0.13.0", default-features = false }
 pulp = { version = "0.21.0", features = ["nightly"] }

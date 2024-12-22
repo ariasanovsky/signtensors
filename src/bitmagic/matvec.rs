@@ -33,14 +33,10 @@ pub mod x86 {
                 let dst_head: &mut [f32x16] = bytemuck::cast_slice_mut(dst_head);
 
                 let m = lhs.nrows();
-                let n = lhs.ncols();
 
-                for j in 0..n {
-                    let lhs = bytemuck::cast_slice::<_, u16>(
-                        lhs.storage().col(j).try_as_slice().unwrap(),
-                    );
-
-                    let rhs = rhs[j];
+                for (lhs, rhs) in core::iter::zip(lhs.storage().col_iter(), rhs) {
+                    let lhs = bytemuck::cast_slice::<_, u16>(lhs.try_as_slice().unwrap());
+                    let rhs = *rhs;
                     let pos_rhs = simd.splat_f32x16(rhs);
                     let neg_rhs = simd.splat_f32x16(-rhs);
 
@@ -101,7 +97,6 @@ pub mod x86 {
                 let dst_head: &mut [f32x8] = bytemuck::cast_slice_mut(dst_head);
 
                 let m = lhs.nrows();
-                let n = lhs.ncols();
 
                 const MASK: u32x8 = u32x8(
                     (1 << 0) | (1 << 8) | (1 << 16) | (1 << 24),
@@ -116,11 +111,8 @@ pub mod x86 {
                 const SHIFT: u32x8 = u32x8(7, 6, 5, 4, 3, 2, 1, 0);
                 let sign_bit = simd.splat_u32x8(u32::MAX / 2 + 1);
 
-                for j in 0..n {
-                    let lhs =
-                        bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
-
-                    let rhs = rhs[j];
+                for (lhs, &rhs) in core::iter::zip(lhs.storage().col_iter(), rhs) {
+                    let lhs = bytemuck::cast_slice::<_, u8>(lhs.try_as_slice().unwrap());
                     let rhs = simd.splat_f32x8(rhs);
 
                     {
@@ -191,19 +183,16 @@ pub mod x86 {
 }
 
 pub fn matvec_f32_scalar(dst: &mut [f32], lhs: SignMatRef<'_>, rhs: &[f32]) {
-    let m = lhs.nrows();
-    let n = lhs.ncols();
+    for (lhs, rhs) in core::iter::zip(lhs.storage().col_iter(), rhs) {
+        let rhs = *rhs;
+        let lhs = bytemuck::cast_slice::<_, u8>(lhs.try_as_slice().unwrap());
 
-    for j in 0..n {
-        let rhs = rhs[j];
-        let lhs = bytemuck::cast_slice::<_, u8>(lhs.storage().col(j).try_as_slice().unwrap());
-
-        for i in 0..m {
+        for (i, dst) in dst.iter_mut().enumerate() {
             let div = i / 8;
             let rem = i % 8;
 
             let lhs = (lhs[div] >> rem) & 1 == 1;
-            dst[i] += if lhs { -rhs } else { rhs };
+            *dst += if lhs { -rhs } else { rhs };
         }
     }
 }
