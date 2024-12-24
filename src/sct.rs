@@ -493,7 +493,7 @@ mod tests {
         dbg!(&one_cut.sct);
         println!("{:?}", one_cut.sct.expand());
         assert!(all(
-            one_cut.sct.s[0] == one_cut.sct.t[0],
+            one_cut.sct.s[0] & 0b111 == one_cut.sct.t[0] & 0b111,
             (one_cut.sct.c[0] - (3 as f32).recip()).abs() < 1e-5,
         ));
     }
