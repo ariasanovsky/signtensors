@@ -481,4 +481,20 @@ mod tests {
         println!("{:?}", one_cut.sct.expand());
         assert!(one_cut.remainder_cis.norm_l2() < 1e-5);
     }
+
+    #[test]
+    fn first_sct_of_identity_has_s_equal_t() {
+        let eye: Mat<f32> = Mat::identity(3, 3);
+        let rng = &mut StdRng::seed_from_u64(0);
+        let mut one_cut = GreedyCuts::new(eye.as_ref());
+        let mut mem = GlobalPodBuffer::new(one_cut.extend_scratch().unwrap());
+        let stack = PodStack::new(&mut mem);
+        one_cut.extend(1, rng, stack);
+        dbg!(&one_cut.sct);
+        println!("{:?}", one_cut.sct.expand());
+        assert!(all(
+            one_cut.sct.s[0] == one_cut.sct.t[0],
+            (one_cut.sct.c[0] - (3 as f32).recip()).abs() < 1e-5,
+        ));
+    }
 }
