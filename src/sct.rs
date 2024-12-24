@@ -468,4 +468,17 @@ mod tests {
                 < 1e-5
         );
     }
+
+    #[test]
+    fn sct_of_all_ones_1_by_1_matrix() {
+        let ones: Mat<f32> = Mat::ones(1, 1);
+        let rng = &mut StdRng::seed_from_u64(0);
+        let mut one_cut = GreedyCuts::new(ones.as_ref());
+        let mut mem = GlobalPodBuffer::new(one_cut.extend_scratch().unwrap());
+        let stack = PodStack::new(&mut mem);
+        one_cut.extend(1, rng, stack);
+        dbg!(&one_cut.sct.c);
+        println!("{:?}", one_cut.sct.expand());
+        assert!(one_cut.remainder_cis.norm_l2() < 1e-5);
+    }
 }
