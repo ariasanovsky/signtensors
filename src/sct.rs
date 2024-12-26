@@ -213,6 +213,8 @@ impl GreedyCuts {
             self.remainder_trans.as_ref(),
             &bytemuck::cast_slice(s_signs)[..nrows.div_ceil(16)],
         );
+        s_image_half *= 0.5_f32;
+        t_image_half *= 0.5_f32;
 
         let mut cut = CutHelperMut {
             t_signs_old,
@@ -434,6 +436,27 @@ mod tests {
     use equator::assert;
     use faer::dyn_stack::GlobalPodBuffer;
     use rand::prelude::*;
+
+    #[test]
+    fn test_convergence() {
+        let rng = &mut StdRng::seed_from_u64(0);
+
+        let m = 512;
+        let n = 512;
+
+        let A: Mat<f32> = faer::stats::StandardNormalMat { nrows: m, ncols: n }.sample(rng);
+        let mut cut = GreedyCuts::new(A.as_ref());
+
+        let mut mem = GlobalPodBuffer::new(cut.extend_scratch().unwrap());
+        let stack = PodStack::new(&mut mem);
+        let init = cut.norm_l2();
+        cut.extend(1024, rng, stack);
+        assert!(cut.norm_l2() / init < 0.15);
+        cut.extend(1024, rng, stack);
+        assert!(cut.norm_l2() / init < 0.025);
+        cut.extend(1024, rng, stack);
+        assert!(cut.norm_l2() / init < 0.005);
+    }
 
     #[test]
     fn test_sct() {

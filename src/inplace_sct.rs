@@ -126,7 +126,7 @@ impl CutHelperMut<'_> {
                 let div = i / 8;
                 let rem = i % 8;
                 let sign = (((s_signs[div] >> rem) & 1 == 1) as u32) << 31;
-                cut += f32::from_bits(t.to_bits() ^ sign);
+                cut += 2.0 * f32::from_bits(t.to_bits() ^ sign);
             }
         }
         for _ in 0..max_iterations {
@@ -167,14 +167,14 @@ impl CutHelperMut<'_> {
         let normalization = remainder.nrows() * remainder.ncols();
         let normalized_cut = cut / normalization as f32;
         // remainder <- remainder - S * c * T^top
-        // s_image <- s_image - T * c * S^top * S
-        // t_image <- t_image - S * c * T^top * T
+        // s_image_half <- s_image_half - 0.5 * T * c * S^top * S
+        // t_image_half <- t_image_half - 0.5 * S * c * T^top * T
 
         {
             let t_signs = bytemuck::cast_slice::<u64, u8>(t_signs);
             let s_signs = bytemuck::cast_slice::<u64, u8>(s_signs);
 
-            let k = cut / remainder.ncols() as f32;
+            let k = 0.5 * cut / remainder.ncols() as f32;
             for (i, s) in s_image_half
                 .rb_mut()
                 .try_as_slice_mut()
@@ -188,7 +188,7 @@ impl CutHelperMut<'_> {
                 *s -= f32::from_bits(k.to_bits() ^ sign)
             }
 
-            let k = cut / remainder.nrows() as f32;
+            let k = 0.5 * cut / remainder.nrows() as f32;
             for (i, t) in t_image_half
                 .rb_mut()
                 .try_as_slice_mut()
@@ -414,12 +414,12 @@ pub(crate) fn sparse_matvec_sign(
     })
 }
 
-// acc += two * (mat + S * C * T^top) * (x_new - x_old)
-// 1. acc += two * mat * (x_new - x_old)
-// 2. acc += two * S * C * T^top * (x_new - x_old)
+// acc += (mat + S * C * T^top) * (x_new - x_old)
+// 1. acc += mat * (x_new - x_old)
+// 2. acc += S * C * T^top * (x_new - x_old)
 fn mul_add_with_rank_update(
     acc: &mut [f32],
-    two_mat: MatRef<'_, f32>,
+    mat: MatRef<'_, f32>,
     S: SignMatRef<'_>,
     C: ColRef<'_, f32>,
     T: SignMatRef<'_>,
@@ -428,9 +428,9 @@ fn mul_add_with_rank_update(
     stack: &mut PodStack,
 ) {
     let width = T.ncols();
-    let n = two_mat.ncols();
+    let n = mat.ncols();
     let (diff_indices, stack) = stack.make_raw::<u64>(n);
-    let diff_indices = mul_add(acc, two_mat, x_new, x_old, diff_indices);
+    let diff_indices = mul_add(acc, mat, x_new, x_old, diff_indices);
 
     // y = T^top * (x_new - x_old)
     let (y, _) = faer::linalg::temp_mat_uninit::<f32>(width, 1, stack);
@@ -451,9 +451,9 @@ fn mul_add_with_rank_update(
         }
         *y = acc as f32;
     }
-    // y = 2.0 * C * y
+    // y = C * y
     for (y, &c) in zip(&mut *y, C.try_as_slice().unwrap()) {
-        *y *= 2.0 * c;
+        *y *= c;
     }
     // acc += S * y
     bitmagic::matvec::matvec_f32(acc, S, y);
@@ -499,7 +499,7 @@ pub(crate) fn improve_with_rank_update(
     cut: &mut f32,
     stack: &mut PodStack,
 ) -> bool {
-    let new_cut = s_image.norm_l1();
+    let new_cut = 2.0 * s_image.norm_l1();
     if new_cut <= *cut {
         return false;
     } else {
