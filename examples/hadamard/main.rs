@@ -1,12 +1,17 @@
+mod backend;
+
 use clap::Parser;
 use equator::assert;
 use faer::{
     dyn_stack::{GlobalPodBuffer, PodStack},
+    prelude::SolverCore,
     Col, Mat,
 };
+use itertools::Itertools;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use reborrow::ReborrowMut;
-use signtensors::sct::{GreedyCuts, Sct, SctMut, SctRef};
+use signtensors::sct::{GreedyCuts, Sct, SctMut};
+
+use backend::*;
 
 #[derive(Debug, Parser)]
 #[command(name = "Hadamard")]
@@ -15,10 +20,13 @@ struct Args {
     /// The dimension
     #[arg(short = 'n')]
     nrows: usize,
+    /// Print invariance error
+    #[arg(short = 'e')]
+    err: bool,
 }
 
 fn main() -> eyre::Result<()> {
-    let Args { nrows } = Args::try_parse()?;
+    let Args { nrows, err } = Args::try_parse()?;
     let ncols = nrows;
     let eye: Mat<f32> = Mat::identity(nrows, ncols);
     let mut cuts = GreedyCuts::with_capacity(eye.as_ref(), nrows);
@@ -26,30 +34,57 @@ fn main() -> eyre::Result<()> {
     let stack = PodStack::new(&mut mem);
     let rng = &mut StdRng::seed_from_u64(0);
     for i in 0..nrows {
+        // dbg!(i, cuts.remainder_cis.squared_norm_l2() / nrows as f32);
         cuts.extend(1, rng, stack);
-        // loop {
-        //     let mut improvements = 0;
-        //     for j in 0..i {
-        //         match regenerate_triple(&mut cuts, j, rng) {
-        //             RegenerateResult::Improved => improvements += 1,
-        //             RegenerateResult::EqualOrLess => {}
-        //         }
-        //     }
-        //     if improvements == 0 {
-        //         break;
-        //     } else {
-        //         println!("w = {i}, {improvements} new improvements")
-        //     }
+        // dbg!();
+        // correct_scalars(&mut cuts);
+        if err {
+            print_invariance(&cuts)
+        }
+        correct_signs(&mut cuts, stack);
+        if err {
+            print_invariance(&cuts)
+        }
+        // todo!();
+        // correct_remainder(&mut cuts);
+        // if err {
+        //     print_invariance(&cuts)
         // }
     }
 
     dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
-    let expanded_sct = cuts.sct.expand();
-    let error = eye.as_ref() - cuts.remainder_cis.as_ref() - expanded_sct;
-    dbg!(error.norm_l2());
+    print_invariance(&cuts);
+    // let expanded_sct = cuts.sct.expand();
+    // let error = eye.as_ref() - cuts.remainder_cis.as_ref() - expanded_sct;
+    // dbg!(
+    //     error.norm_l2(),
+    //     cuts.sct
+    //         .c
+    //         .iter()
+    //         .minmax_by(|u, v| u.partial_cmp(v).unwrap())
+    // );
+    // correct_scalars(&mut cuts);
+    // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+    // let expanded_sct = cuts.sct.expand();
+    // let error = eye.as_ref() - cuts.remainder_cis.as_ref() - expanded_sct;
+    // dbg!(
+    //     error.norm_l2(),
+    //     cuts.sct
+    //         .c
+    //         .iter()
+    //         .minmax_by(|u, v| u.partial_cmp(v).unwrap())
+    // );
     // correct_scalars(&mut cuts);
     // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
     Ok(())
+}
+
+fn print_invariance(cuts: &GreedyCuts) {
+    let nrows = cuts.nrows();
+    let width = cuts.width();
+    let remainder_true = faer::Mat::<f32>::identity(nrows, nrows) - cuts.sct.expand();
+    let err = cuts.remainder_cis.as_ref() - remainder_true;
+    println!("invariance (w = {width}): {} == 0", err.norm_l2())
 }
 
 enum RegenerateResult {
@@ -67,16 +102,9 @@ fn regenerate_triple(cuts: &mut GreedyCuts, i: usize, rng: &mut impl Rng) -> Reg
     // println!("{:?}", remainder_cis.as_ref());
     // dbg!(remainder_cis.as_ref(), sct.width());
     let scti = ith_cut(sct.as_mut(), i);
-    // println!("{:?}", scti.expand());
-    // let rk = remainder_cis.as_ref() + scti.expand();
-    // println!("R_{i} = {:?}", rk.as_ref());
-    // let mut sct_dummy = sct.rb_mut().to_owned();
-    // sct_dummy.c[i] = 0.0f32;
-    // let other_rk: Mat<f32> =
-    //     faer::Mat::<f32>::identity(remainder_cis.nrows(), remainder_cis.ncols())
-    //         - sct_dummy.expand();
-    // println!("(also) R_{i} = {:?}", other_rk.as_ref());
-    // panic!();
+    let old_c = scti.c[0];
+    *remainder_cis += scti.expand();
+    remainder_trans.copy_from(remainder_cis.transpose());
     let mut one_cut = GreedyCuts::with_capacity(remainder_cis.as_ref(), 1);
     let mut mem = GlobalPodBuffer::new(one_cut.extend_scratch().unwrap());
     let stack = PodStack::new(&mut mem);
@@ -87,22 +115,24 @@ fn regenerate_triple(cuts: &mut GreedyCuts, i: usize, rng: &mut impl Rng) -> Reg
     //     sct.c[i] * sct.nrows() as f32,
     //     one_cut.sct.c[0] * sct.nrows() as f32
     // );
-    if scti.c[0] < one_cut.sct.c[0] {
-        let SctMut { s, c, t } = scti;
-        let si = s.storage_mut().col_mut(0).try_as_slice_mut().unwrap();
-        let ci = &mut c[..1];
-        assert!(ci.len() == 1);
-        let ti = t.storage_mut().col_mut(0).try_as_slice_mut().unwrap();
-        let Sct {
-            s,
-            c,
-            t,
-            nrows,
-            ncols,
-        } = one_cut.sct;
-        si.copy_from_slice(s.as_slice());
-        ti.copy_from_slice(t.as_slice());
-        ci.copy_from_slice(c.as_slice());
+    let SctMut { s, c, t } = scti;
+    let si = s.storage_mut().col_mut(0).try_as_slice_mut().unwrap();
+    let ci = &mut c[..1];
+    assert!(ci.len() == 1);
+    let ti = t.storage_mut().col_mut(0).try_as_slice_mut().unwrap();
+    let Sct {
+        s,
+        c,
+        t,
+        nrows,
+        ncols,
+    } = one_cut.sct;
+    si.copy_from_slice(s.as_slice());
+    ti.copy_from_slice(t.as_slice());
+    ci.copy_from_slice(c.as_slice());
+    remainder_cis.copy_from(one_cut.remainder_cis);
+    remainder_trans.copy_from(one_cut.remainder_trans);
+    if ci[0] < old_c {
         RegenerateResult::Improved
     } else {
         RegenerateResult::EqualOrLess
@@ -156,8 +186,8 @@ fn ith_cut(sct: SctMut, i: usize) -> SctMut {
 //         let tij = bit_dot(ti, tj);
 //         (sij * tij) as f32
 //     });
-//     dbg!(xtx.norm_l2());
-//     dbg!(xtx.as_ref());
+//     // dbg!(xtx.norm_l2());
+//     // dbg!(xtx.as_ref());
 //     let xti: Col<f32> = Col::from_fn(width, |i| {
 //         let stride = nrows.div_ceil(64);
 //         let si = &s[stride * i..][..stride];
@@ -166,7 +196,11 @@ fn ith_cut(sct: SctMut, i: usize) -> SctMut {
 //         sti as f32
 //     });
 //     // xtx.ll
-//     let xtxi = xtx.lblt(faer::Side::Upper);
-//     dbg!(xtxi.)
-//     todo!()
+//     let xtxi = xtx.cholesky(faer::Side::Upper).unwrap().inverse();
+//     let c_new = xtxi * xti;
+//     c.copy_from_slice(c_new.as_slice());
+//     let new_remainder = Mat::<f32>::identity(*nrows, *ncols) - sct.expand();
+//     remainder_cis.copy_from(new_remainder);
+//     remainder_trans.copy_from(remainder_cis.transpose());
+//     // todo!()
 // }
