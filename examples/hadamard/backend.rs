@@ -1,9 +1,9 @@
 use equator::assert;
-use faer::dyn_stack::PodStack;
+use faer::{dyn_stack::PodStack, Col, Mat};
 use reborrow::{Reborrow, ReborrowMut};
 use signtensors::{
     inplace_sct::CutHelperMut,
-    sct::{GreedyCuts, SctMut},
+    sct::{GreedyCuts, Sct, SctMut},
     SignMatMut,
 };
 
@@ -118,18 +118,22 @@ pub(crate) fn correct_signs(cuts: &mut GreedyCuts, stack: &mut PodStack) -> usiz
         ci[0] = -ci[0];
     }
 
-    correct_remainder(cuts);
+    // correct_remainder(cuts);
     // todo!();
     improvments
 }
 
 pub(crate) fn correct_remainder(cuts: &mut GreedyCuts) {
-    let GreedyCuts {
-        sct,
-        remainder_cis,
-        remainder_trans,
-    } = cuts;
-    // todo!()
+    // let GreedyCuts {
+    //     sct,
+    //     remainder_cis,
+    //     remainder_trans,
+    // } = cuts;
+    let nrows = cuts.nrows();
+    let new_remainder = Mat::<f32>::identity(nrows, nrows) - cuts.sct.expand();
+    cuts.remainder_cis.copy_from(new_remainder);
+    cuts.remainder_trans
+        .copy_from(cuts.remainder_cis.transpose());
 }
 
 pub(crate) fn correct_scalars(cuts: &mut GreedyCuts) {
@@ -138,5 +142,70 @@ pub(crate) fn correct_scalars(cuts: &mut GreedyCuts) {
         remainder_cis,
         remainder_trans,
     } = cuts;
-    todo!()
+    let GreedyCuts {
+        sct,
+        remainder_cis,
+        remainder_trans,
+    } = cuts;
+    let width = sct.width();
+    let Sct {
+        s,
+        c,
+        t,
+        nrows,
+        ncols,
+    } = sct;
+    let bit_dot = |s: &[u64], t: &[u64]| -> i32 {
+        let mut bit_diff = 0u32;
+        for (&si, &ti) in s.iter().zip(t) {
+            let sti = si ^ ti;
+            bit_diff += sti.count_ones();
+        }
+        *nrows as i32 - 2 * bit_diff as i32
+    };
+    let xtx: Mat<f32> = Mat::from_fn(width, width, |i, j| {
+        let stride = nrows.div_ceil(64);
+        let si = &s[stride * i..][..stride];
+        let sj = &s[stride * j..][..stride];
+        let sij = bit_dot(si, sj);
+        let ti = &t[stride * i..][..stride];
+        let tj = &t[stride * j..][..stride];
+        let tij = bit_dot(ti, tj);
+        (sij * tij) as f32
+    });
+    let xtxi = xtx.thin_svd().pseudoinverse();
+    let xti: Col<f32> = Col::from_fn(width, |i| {
+        let stride = nrows.div_ceil(64);
+        let si = &s[stride * i..][..stride];
+        let ti = &t[stride * i..][..stride];
+        let sti = bit_dot(si, ti);
+        sti as f32
+    });
+    let c_new = xtxi * xti;
+    c.copy_from_slice(c_new.as_slice());
+    correct_remainder(cuts);
+}
+
+pub(crate) fn zap_bottom(cuts: &mut GreedyCuts, k: usize, rng: &mut impl rand::Rng) {
+    let mut values: Vec<(usize, f32)> = cuts
+        .sct
+        .c
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| (i, c))
+        .collect();
+    values.sort_by(|(i, c), (j, d)| c.partial_cmp(d).unwrap().then(i.cmp(j)));
+    let sct = &mut cuts.sct;
+    let stride = sct.nrows().div_ceil(64);
+    for i in 0..k {
+        let i = values[i].0;
+        sct.c[i] = 0.0;
+        // let si = &mut sct.s[stride * i..][..stride];
+        // rng.fill_bytes(bytemuck::cast_slice_mut(si));
+        // let ti = &mut sct.s[stride * i..][..stride];
+        // rng.fill_bytes(bytemuck::cast_slice_mut(ti));
+    }
+    correct_remainder(cuts);
+    // println!("min: {:?}, max: {:?}", values[0], values.last().unwrap());
+    // todo!()
 }

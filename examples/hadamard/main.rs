@@ -54,28 +54,60 @@ fn main() -> eyre::Result<()> {
 
     dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
     print_invariance(&cuts);
-    // let expanded_sct = cuts.sct.expand();
-    // let error = eye.as_ref() - cuts.remainder_cis.as_ref() - expanded_sct;
-    // dbg!(
-    //     error.norm_l2(),
-    //     cuts.sct
-    //         .c
-    //         .iter()
-    //         .minmax_by(|u, v| u.partial_cmp(v).unwrap())
-    // );
-    // correct_scalars(&mut cuts);
-    // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
-    // let expanded_sct = cuts.sct.expand();
-    // let error = eye.as_ref() - cuts.remainder_cis.as_ref() - expanded_sct;
-    // dbg!(
-    //     error.norm_l2(),
-    //     cuts.sct
-    //         .c
-    //         .iter()
-    //         .minmax_by(|u, v| u.partial_cmp(v).unwrap())
-    // );
-    // correct_scalars(&mut cuts);
-    // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+    let mut best_remainder = cuts.norm_l2();
+    let mut improved = true;
+    while improved {
+        improved = false;
+        for k in (nrows - 40..nrows).rev() {
+            // println!("k = {k}");
+            // correct_scalars(&mut cuts);
+            correct_signs(&mut cuts, stack);
+            zap_bottom(&mut cuts, k, rng);
+            let mut remainder = cuts.norm_l2();
+            loop {
+                correct_signs(&mut cuts, stack);
+                correct_remainder(&mut cuts);
+                // print_invariance(&cuts);
+                // correct_scalars(&mut cuts);
+                // print_invariance(&cuts);
+                let new_remainder = cuts.norm_l2();
+                // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+                if new_remainder < best_remainder {
+                    best_remainder = new_remainder;
+                    improved = true;
+                    println!(
+                        "(k = {k}): r = {}",
+                        best_remainder * best_remainder / nrows as f32
+                    )
+                }
+                if new_remainder >= remainder {
+                    break;
+                } else {
+                    remainder = new_remainder
+                }
+            }
+        }
+        print_invariance(&cuts);
+        correct_scalars(&mut cuts);
+    }
+    dbg!(cuts
+        .sct
+        .c
+        .iter()
+        .minmax_by(|a, b| a.partial_cmp(b).unwrap()));
+    println!("{:?}", cuts.sct.c.as_slice());
+    // for _ in 0..100 {
+    //     correct_scalars(&mut cuts);
+    //     print_invariance(&cuts);
+    //     correct_signs(&mut cuts, stack);
+    //     dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+    // }
+    correct_scalars(&mut cuts);
+    print_invariance(&cuts);
+    dbg!(
+        best_remainder * best_remainder / nrows as f32,
+        cuts.remainder_cis.squared_norm_l2() / nrows as f32
+    );
     Ok(())
 }
 
