@@ -41,7 +41,7 @@ fn main() -> eyre::Result<()> {
         if err {
             print_invariance(&cuts)
         }
-        correct_signs(&mut cuts, stack);
+        // correct_signs(&mut cuts, stack);
         if err {
             print_invariance(&cuts)
         }
@@ -53,6 +53,7 @@ fn main() -> eyre::Result<()> {
     }
 
     dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+    return Ok(());
     print_invariance(&cuts);
     let mut best_remainder = cuts.norm_l2();
     let mut improved = true;

@@ -52,6 +52,12 @@ impl CutHelperMut<'_> {
 
         t_signs_old.copy_from_slice(t_signs);
         rng.fill_bytes(bytemuck::cast_slice_mut(t_signs));
+        let tail = remainder.ncols() % 64;
+        if tail != 0 {
+            let last_bytes = t_signs.last_mut().unwrap();
+            let low_bits = (1 << tail) - 1;
+            *last_bytes &= low_bits;
+        }
 
         mul_add_with_rank_update(
             t_image_half.rb_mut().try_as_slice_mut().unwrap(),
