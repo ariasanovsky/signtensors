@@ -59,6 +59,10 @@ impl GreedyScs {
             }
         }
         loop {
+            // s is optimal w.r.t. R iff (R * s) o s >= D(R)
+            // R' = R - c s s^top (has constant diagonal)
+            // if D(A) >= 0, then this implies (R * s) o s >= 0
+            // which implies that s = sgn(R * s)
             let delta =
                 self.remainder.diagonal().column_vector() - faer::col::from_slice(&s_image_circ_s);
             let best_position = delta

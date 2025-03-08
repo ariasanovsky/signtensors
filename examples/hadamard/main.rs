@@ -34,7 +34,7 @@ fn main() -> eyre::Result<()> {
     let stack = PodStack::new(&mut mem);
     let rng = &mut StdRng::seed_from_u64(0);
     for i in 0..nrows {
-        // dbg!(i, cuts.remainder_cis.squared_norm_l2() / nrows as f32);
+        dbg!(i, cuts.remainder_cis.squared_norm_l2() / nrows as f32);
         cuts.extend(1, rng, stack);
         // dbg!();
         // correct_scalars(&mut cuts);
@@ -53,7 +53,7 @@ fn main() -> eyre::Result<()> {
     }
 
     dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
-    return Ok(());
+    // return Ok(());
     print_invariance(&cuts);
     let mut best_remainder = cuts.norm_l2();
     let mut improved = true;
@@ -67,9 +67,9 @@ fn main() -> eyre::Result<()> {
             let mut remainder = cuts.norm_l2();
             loop {
                 correct_signs(&mut cuts, stack);
-                correct_remainder(&mut cuts);
                 // print_invariance(&cuts);
-                // correct_scalars(&mut cuts);
+                correct_scalars(&mut cuts);
+                correct_remainder(&mut cuts);
                 // print_invariance(&cuts);
                 let new_remainder = cuts.norm_l2();
                 // dbg!(cuts.remainder_cis.squared_norm_l2() / nrows as f32);
